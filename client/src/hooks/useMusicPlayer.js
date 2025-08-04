@@ -1,9 +1,9 @@
-// client/src/hooks/useMusicPlayer.js - Fixed Version
+// client/src/hooks/useMusicPlayer.js - Fixed Shuffle Implementation
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useSpotifyWebPlayback } from './useSpotifyWebPlayback.js';
 
 export function useMusicPlayer(tracks, sortMode) {
-  const [currentQueueIndex, setCurrentQueueIndex] = useState(0); // Renamed for clarity
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
   const [shuffleMode, setShuffleMode] = useState(false);
   const [playQueue, setPlayQueue] = useState([]);
   const [originalQueue, setOriginalQueue] = useState([]);
@@ -32,20 +32,18 @@ export function useMusicPlayer(tracks, sortMode) {
     tracksLength: tracks.length,
     spotifyCurrentTrack: spotifyCurrentTrack?.name,
     isPlaying,
-    position: playerState?.position,
-    duration: playerState?.duration,
     shuffleMode,
     currentTrackInQueue: playQueue[currentQueueIndex]
   });
 
-  // All tracks are now "playable" since we don't rely on preview URLs
+  // All tracks with Spotify IDs are playable
   const playableTracks = useMemo(() => {
     const filtered = tracks.filter(track => track.spotifyId);
     console.log('🎵 Playable tracks:', filtered.length, 'of', tracks.length);
     return filtered;
   }, [tracks]);
 
-  // Current track object - Get the actual track from the queue
+  // Current track object
   const currentTrack = useMemo(() => {
     // If we have Spotify player state, try to match it with our tracks
     if (spotifyCurrentTrack && spotifyCurrentTrack.id) {
@@ -57,7 +55,6 @@ export function useMusicPlayer(tracks, sortMode) {
         return matchedTrack;
       } else {
         console.log('⚠️ Spotify track not found in our data:', spotifyCurrentTrack.name);
-        // Return a track object based on Spotify data
         return {
           title: spotifyCurrentTrack.name,
           artist: spotifyCurrentTrack.artists.map(a => a.name).join(', '),
@@ -72,7 +69,7 @@ export function useMusicPlayer(tracks, sortMode) {
     // Fallback to queue-based current track
     const trackIndex = playQueue[currentQueueIndex];
     const queueTrack = trackIndex !== undefined ? playableTracks[trackIndex] : null;
-    console.log('🔄 Using queue-based current track:', queueTrack?.title || 'None', 'at queue index:', currentQueueIndex, 'track index:', trackIndex);
+    console.log('🔄 Using queue-based current track:', queueTrack?.title || 'None');
     return queueTrack;
   }, [playableTracks, currentQueueIndex, spotifyCurrentTrack, playQueue]);
 
@@ -82,7 +79,11 @@ export function useMusicPlayer(tracks, sortMode) {
     
     const indices = playableTracks.map((_, index) => index);
     setOriginalQueue([...indices]);
-    setPlayQueue([...indices]);
+    
+    // Only set play queue if it's empty (don't override existing shuffle)
+    if (playQueue.length === 0) {
+      setPlayQueue([...indices]);
+    }
     
     // Reset to first track if current index is out of bounds
     if (currentQueueIndex >= playableTracks.length) {
@@ -90,18 +91,30 @@ export function useMusicPlayer(tracks, sortMode) {
     }
     
     console.log('🔄 Queue initialized:', indices.length, 'tracks');
-  }, [playableTracks, currentQueueIndex]);
+  }, [playableTracks.length]); // Only depend on length to avoid recreating queue unnecessarily
 
   // Enhanced weighted shuffle function
-  const createWeightedShuffle = useCallback(() => {
+  const createWeightedShuffle = useCallback((excludeTrackIndex = null) => {
     if (playableTracks.length === 0) return [];
 
     const trackIndices = playableTracks.map((_, index) => index);
-    const weights = playableTracks.map((track) => {
+    
+    // Remove the excluded track if specified
+    const availableIndices = excludeTrackIndex !== null 
+      ? trackIndices.filter(index => index !== excludeTrackIndex)
+      : [...trackIndices];
+
+    if (availableIndices.length === 0) return excludeTrackIndex !== null ? [excludeTrackIndex] : [];
+
+    const weights = availableIndices.map((trackIndex) => {
+      const track = playableTracks[trackIndex];
       let weight = 1;
+      
+      // Base weight on score (votes)
       const normalizedVotes = Math.max(0, track.score + 5);
       weight *= Math.pow(normalizedVotes + 1, 1.2);
 
+      // Adjust weight based on sort mode
       if (sortMode === 'tempo' && track.tempo != null) {
         weight *= (track.tempo / 120) + 0.5;
       } else if (sortMode === 'energy' && track.energy != null) {
@@ -114,41 +127,46 @@ export function useMusicPlayer(tracks, sortMode) {
     });
 
     const shuffled = [];
-    const availableIndices = [...trackIndices];
-    const availableWeights = [...weights];
+    const workingIndices = [...availableIndices];
+    const workingWeights = [...weights];
 
-    const highVoteTracks = availableIndices.filter(i => playableTracks[i].score > 3);
+    // 70% chance to start with a highly voted track (if any exist)
+    const highVoteTracks = workingIndices.filter(i => playableTracks[i].score > 3);
     if (highVoteTracks.length > 0 && Math.random() < 0.7) {
       const randomHighVote = highVoteTracks[Math.floor(Math.random() * highVoteTracks.length)];
-      const indexInAvailable = availableIndices.indexOf(randomHighVote);
-      shuffled.push(availableIndices[indexInAvailable]);
-      availableIndices.splice(indexInAvailable, 1);
-      availableWeights.splice(indexInAvailable, 1);
+      const indexInWorking = workingIndices.indexOf(randomHighVote);
+      shuffled.push(workingIndices[indexInWorking]);
+      workingIndices.splice(indexInWorking, 1);
+      workingWeights.splice(indexInWorking, 1);
     }
 
-    while (availableIndices.length > 0) {
-      const totalWeight = availableWeights.reduce((sum, w) => sum + w, 0);
+    // Weighted random selection for remaining tracks
+    while (workingIndices.length > 0) {
+      const totalWeight = workingWeights.reduce((sum, w) => sum + w, 0);
       let random = Math.random() * totalWeight;
       
       let selectedIndex = 0;
-      for (let i = 0; i < availableWeights.length; i++) {
-        random -= availableWeights[i];
+      for (let i = 0; i < workingWeights.length; i++) {
+        random -= workingWeights[i];
         if (random <= 0) {
           selectedIndex = i;
           break;
         }
       }
 
-      shuffled.push(availableIndices[selectedIndex]);
-      availableIndices.splice(selectedIndex, 1);
-      availableWeights.splice(selectedIndex, 1);
+      shuffled.push(workingIndices[selectedIndex]);
+      workingIndices.splice(selectedIndex, 1);
+      workingWeights.splice(selectedIndex, 1);
     }
 
-    console.log('🔀 Created weighted shuffle:', shuffled);
-    return shuffled;
+    // If we excluded a track, add it at the beginning
+    const finalQueue = excludeTrackIndex !== null ? [excludeTrackIndex, ...shuffled] : shuffled;
+    
+    console.log('🔀 Created weighted shuffle:', finalQueue.length, 'tracks');
+    return finalQueue;
   }, [playableTracks, sortMode]);
 
-  // Play function - Fixed to work with queue indices
+  // Play function
   const play = useCallback(async (trackIndex = null) => {
     if (playableTracks.length === 0 || !spotifyReady) {
       console.log('❌ Cannot play: no tracks or Spotify not ready');
@@ -173,18 +191,13 @@ export function useMusicPlayer(tracks, sortMode) {
 
     console.log('▶️ Playing track:', targetTrack.title, 'at track index', targetTrackIndex);
 
-    // Initialize queue if it's empty
-    if (playQueue.length === 0) {
-      initializeQueue();
-    }
-
     // Play via Spotify Web Playback SDK
     const spotifyUri = `spotify:track:${targetTrack.spotifyId}`;
     const success = await playSpotifyTrack(spotifyUri);
     
     console.log('🎵 Playback result:', success ? 'SUCCESS' : 'FAILED');
     return success;
-  }, [playableTracks, spotifyReady, currentQueueIndex, playQueue, initializeQueue, playSpotifyTrack, currentTrack, isPlaying, toggleSpotifyPlay]);
+  }, [playableTracks, spotifyReady, currentQueueIndex, playQueue, playSpotifyTrack, currentTrack, isPlaying, toggleSpotifyPlay]);
 
   // Pause function
   const pause = useCallback(async () => {
@@ -194,9 +207,12 @@ export function useMusicPlayer(tracks, sortMode) {
     }
   }, [spotifyReady, toggleSpotifyPlay]);
 
-  // Next track function - Fixed to properly advance queue
+  // Fixed next function - maintains current queue
   const next = useCallback(async () => {
-    if (playableTracks.length === 0 || playQueue.length === 0) return;
+    if (playableTracks.length === 0 || playQueue.length === 0) {
+      console.log('❌ Cannot go to next: no tracks or empty queue');
+      return;
+    }
 
     console.log('⏭️ Next track - current queue index:', currentQueueIndex, 'queue length:', playQueue.length);
     
@@ -209,25 +225,19 @@ export function useMusicPlayer(tracks, sortMode) {
       setCurrentQueueIndex(nextQueueIndex);
       await play(nextTrackIndex);
     } else {
-      // End of queue - handle repeat behavior
-      console.log('⏭️ End of queue reached');
-      if (shuffleMode) {
-        // Create a fresh shuffle and start over
-        const newShuffledQueue = createWeightedShuffle();
-        setPlayQueue(newShuffledQueue);
-        setCurrentQueueIndex(0);
-        await play(newShuffledQueue[0]);
-      } else {
-        // Loop back to beginning of original queue
-        setCurrentQueueIndex(0);
-        await play(originalQueue[0]);
-      }
+      // End of queue - loop back to beginning
+      console.log('⏭️ End of queue reached, looping back to start');
+      setCurrentQueueIndex(0);
+      await play(playQueue[0]);
     }
-  }, [playableTracks, currentQueueIndex, playQueue, play, shuffleMode, createWeightedShuffle, originalQueue]);
+  }, [playableTracks.length, playQueue, currentQueueIndex, play]);
 
-  // Previous track function - Fixed to properly go back in queue
+  // Fixed previous function
   const previous = useCallback(async () => {
-    if (playableTracks.length === 0 || playQueue.length === 0) return;
+    if (playableTracks.length === 0 || playQueue.length === 0) {
+      console.log('❌ Cannot go to previous: no tracks or empty queue');
+      return;
+    }
 
     console.log('⏮️ Previous track - current queue index:', currentQueueIndex);
 
@@ -246,99 +256,73 @@ export function useMusicPlayer(tracks, sortMode) {
       setCurrentQueueIndex(lastQueueIndex);
       await play(lastTrackIndex);
     }
-  }, [playableTracks, currentQueueIndex, playQueue, play]);
+  }, [playableTracks.length, playQueue, currentQueueIndex, play]);
 
-  // Toggle shuffle function - Fixed to create queue starting with current track
+  // Fixed toggle shuffle function
   const toggleShuffle = useCallback(() => {
     console.log('🔀 Toggling shuffle from', shuffleMode, 'to', !shuffleMode);
     
-    // Get the currently playing track
-    const currentTrackIndex = playQueue[currentQueueIndex];
-    const currentPlayableTrack = playableTracks[currentTrackIndex];
-    
     if (!shuffleMode) {
       // Turning shuffle ON
-      if (currentPlayableTrack) {
-        // Create a shuffled queue but ensure current track is first
-        const shuffledQueue = createWeightedShuffle();
-        
-        // Remove current track from shuffled queue if it exists
-        const filteredShuffled = shuffledQueue.filter(index => 
-          playableTracks[index]?.trackId !== currentPlayableTrack.trackId
-        );
-        
-        // Create new queue starting with current track, followed by shuffled remaining tracks
-        const newQueue = [currentTrackIndex, ...filteredShuffled];
-        
-        setPlayQueue(newQueue);
-        setCurrentQueueIndex(0); // Current track is now at position 0
-        setShuffleMode(true);
-        
-        console.log('🔀 Shuffle enabled - queue starts with current track, length:', newQueue.length);
-      } else {
-        // No current track, just use regular shuffle
-        const shuffledQueue = createWeightedShuffle();
-        setPlayQueue(shuffledQueue);
-        setCurrentQueueIndex(0);
-        setShuffleMode(true);
-        console.log('🔀 Shuffle enabled - no current track, starting fresh');
-      }
+      const currentTrackIndex = playQueue[currentQueueIndex];
+      console.log('🔀 Current track index:', currentTrackIndex);
+      
+      // Create shuffled queue excluding current track
+      const shuffledQueue = createWeightedShuffle(currentTrackIndex);
+      
+      setPlayQueue(shuffledQueue);
+      setCurrentQueueIndex(0); // Current track is now at position 0
+      setShuffleMode(true);
+      
+      console.log('🔀 Shuffle enabled - new queue length:', shuffledQueue.length);
     } else {
       // Turning shuffle OFF
-      if (currentPlayableTrack) {
-        // Find where current track should be in original order
-        const originalIndex = originalQueue.findIndex(index => 
-          playableTracks[index]?.trackId === currentPlayableTrack.trackId
-        );
+      const currentTrackIndex = playQueue[currentQueueIndex];
+      console.log('🔀 Current track when turning off shuffle:', currentTrackIndex);
+      
+      // Find current track in original order and create queue starting from there
+      const originalIndex = originalQueue.indexOf(currentTrackIndex);
+      
+      if (originalIndex >= 0) {
+        // Create queue starting from current track position in original order
+        const reorderedQueue = [
+          ...originalQueue.slice(originalIndex),
+          ...originalQueue.slice(0, originalIndex)
+        ];
         
-        if (originalIndex >= 0) {
-          // Create queue starting from current track position in original order
-          const beforeCurrent = originalQueue.slice(0, originalIndex);
-          const fromCurrent = originalQueue.slice(originalIndex);
-          const newQueue = [...fromCurrent, ...beforeCurrent];
-          
-          setPlayQueue(newQueue);
-          setCurrentQueueIndex(0); // Current track is now at position 0
-          setShuffleMode(false);
-          
-          console.log('🔀 Shuffle disabled - queue starts with current track at original position');
-        } else {
-          // Fallback to original queue
-          setPlayQueue([...originalQueue]);
-          setCurrentQueueIndex(0);
-          setShuffleMode(false);
-        }
+        setPlayQueue(reorderedQueue);
+        setCurrentQueueIndex(0); // Current track is now at position 0
       } else {
-        // No current track, use original queue
+        // Fallback: use original queue as-is
         setPlayQueue([...originalQueue]);
-        setCurrentQueueIndex(0);
-        setShuffleMode(false);
-        console.log('🔀 Shuffle disabled - restored original queue');
+        setCurrentQueueIndex(originalIndex >= 0 ? originalIndex : 0);
       }
+      
+      setShuffleMode(false);
+      console.log('🔀 Shuffle disabled - restored sequential order');
     }
-  }, [shuffleMode, createWeightedShuffle, originalQueue, playableTracks, playQueue, currentQueueIndex]);
+  }, [shuffleMode, createWeightedShuffle, originalQueue, playQueue, currentQueueIndex]);
 
   // Play all function
   const playAll = useCallback(async () => {
     if (playableTracks.length === 0) return;
     
     console.log('🎵 Play All - shuffle mode:', shuffleMode);
-    initializeQueue();
     
-    // Use the appropriate queue
     let queueToUse;
     if (shuffleMode) {
       queueToUse = createWeightedShuffle();
       setPlayQueue(queueToUse);
     } else {
       queueToUse = [...originalQueue];
+      setPlayQueue(queueToUse);
     }
     
     const firstTrackIndex = queueToUse[0];
     console.log('🎵 Playing first track at index:', firstTrackIndex);
     setCurrentQueueIndex(0);
     await play(firstTrackIndex);
-  }, [playableTracks, initializeQueue, play, shuffleMode, createWeightedShuffle, originalQueue]);
+  }, [playableTracks.length, shuffleMode, createWeightedShuffle, originalQueue, play]);
 
   // Helper functions
   const getPlayableTrackIndex = useCallback((originalTrackIndex) => {
@@ -387,10 +371,12 @@ export function useMusicPlayer(tracks, sortMode) {
     return currentTrackIndex === playableIndex;
   }, [getPlayableTrackIndex, playQueue, currentQueueIndex]);
 
-  // Initialize queue on mount
+  // Initialize queue on mount and when tracks change
   useEffect(() => {
-    initializeQueue();
-  }, [initializeQueue]);
+    if (playableTracks.length > 0) {
+      initializeQueue();
+    }
+  }, [playableTracks.length]); // Only re-run if the number of tracks changes
 
   // Handle automatic track advancement
   useEffect(() => {
@@ -398,16 +384,13 @@ export function useMusicPlayer(tracks, sortMode) {
       console.log('🔄 Track ended, playing next');
       next();
     }
-  }, [playerState, isPlaying, next]);
-
-  // Update queue when shuffle mode changes - Remove this effect to prevent loops
-  // The toggleShuffle function now handles queue updates directly
+  }, [playerState?.position, playerState?.duration, isPlaying, next]);
 
   return {
     // State
     isPlaying,
     currentTrack,
-    currentTrackIndex: currentQueueIndex, // For backward compatibility
+    currentTrackIndex: currentQueueIndex,
     shuffleMode,
     playQueue,
     playableTracks,

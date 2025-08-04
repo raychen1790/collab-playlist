@@ -1,4 +1,4 @@
-// client/src/hooks/useSpotifyWebPlayback.js
+// client/src/hooks/useSpotifyWebPlayback.js - Fixed Position Updates
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const SPOTIFY_PLAYER_NAME = 'PlaylistVotes Player';
@@ -17,6 +17,8 @@ export function useSpotifyWebPlayback() {
   const retryCountRef = useRef(0);
   const maxRetries = 3;
   const positionUpdateIntervalRef = useRef(null);
+  const lastKnownPositionRef = useRef(0);
+  const lastUpdateTimeRef = useRef(Date.now());
 
   // Fetch access token from backend
   const fetchAccessToken = useCallback(async () => {
@@ -80,7 +82,7 @@ export function useSpotifyWebPlayback() {
     });
   }, []);
 
-  // Update player position periodically when playing
+  // Update player position with interpolation for smooth progress bar
   const startPositionUpdates = useCallback(() => {
     if (positionUpdateIntervalRef.current) {
       clearInterval(positionUpdateIntervalRef.current);
@@ -91,10 +93,20 @@ export function useSpotifyWebPlayback() {
         try {
           const state = await player.getCurrentState();
           if (state && !state.paused) {
+            // Update our references for interpolation
+            lastKnownPositionRef.current = state.position;
+            lastUpdateTimeRef.current = Date.now();
+            
             setPlayerState(prevState => ({
               ...prevState,
               ...state,
               position: state.position
+            }));
+          } else if (state && state.paused) {
+            // If paused, update position but don't continue interpolating
+            setPlayerState(prevState => ({
+              ...prevState,
+              ...state
             }));
           }
         } catch (err) {
@@ -102,11 +114,39 @@ export function useSpotifyWebPlayback() {
         }
       }
     }, 1000); // Update every second
-  }, [player, isActive]);
+
+    // Also start a higher frequency interpolation for smooth progress bar
+    const smoothUpdateInterval = setInterval(() => {
+      if (player && isActive && playerState && !playerState.paused) {
+        const now = Date.now();
+        const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
+        const interpolatedPosition = lastKnownPositionRef.current + timeSinceLastUpdate;
+        
+        // Only update if we have a valid duration and position hasn't exceeded it
+        if (playerState.duration && interpolatedPosition <= playerState.duration) {
+          setPlayerState(prevState => ({
+            ...prevState,
+            position: interpolatedPosition
+          }));
+        }
+      }
+    }, 100); // Update every 100ms for smooth progress bar
+
+    // Store both intervals for cleanup
+    positionUpdateIntervalRef.current = {
+      main: positionUpdateIntervalRef.current,
+      smooth: smoothUpdateInterval
+    };
+  }, [player, isActive, playerState]);
 
   const stopPositionUpdates = useCallback(() => {
     if (positionUpdateIntervalRef.current) {
-      clearInterval(positionUpdateIntervalRef.current);
+      if (typeof positionUpdateIntervalRef.current === 'object') {
+        clearInterval(positionUpdateIntervalRef.current.main);
+        clearInterval(positionUpdateIntervalRef.current.smooth);
+      } else {
+        clearInterval(positionUpdateIntervalRef.current);
+      }
       positionUpdateIntervalRef.current = null;
     }
   }, []);
@@ -192,6 +232,12 @@ export function useSpotifyWebPlayback() {
       spotifyPlayer.addListener('player_state_changed', (state) => {
         console.log('Player state changed:', state);
         setPlayerState(state);
+        
+        // Update our position tracking references
+        if (state) {
+          lastKnownPositionRef.current = state.position;
+          lastUpdateTimeRef.current = Date.now();
+        }
         
         // Start/stop position updates based on playback state
         if (state && !state.paused && isActive) {
@@ -404,6 +450,8 @@ export function useSpotifyWebPlayback() {
     if (player) {
       await player.seek(positionMs);
       // Update the position immediately for better UX
+      lastKnownPositionRef.current = positionMs;
+      lastUpdateTimeRef.current = Date.now();
       setPlayerState(prevState => ({
         ...prevState,
         position: positionMs

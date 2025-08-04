@@ -3,22 +3,7 @@ import VoteButtons from './VoteButtons.jsx';
 import { Play, Pause, Music } from 'lucide-react';
 
 /**
- * Props
- * -----
- * roomId           UUID of the room   (string)
- * track            { trackId, spotifyId, title, artist, albumArt,
- *                    score, tempo, energy, danceability }
- * sortMode         "votes" | "tempo" | "energy" | "dance"
- * isAuthed         boolean   – show vote buttons only if true
- * onTrackUpdate    fn(trackId, newScore) – bubble up vote changes
- * position         number    – ranking position (1, 2, 3...)
- * isPlaying        boolean   – whether this track is currently playing
- * isCurrentTrack   boolean   – whether this is the current track in player
- * onPlay           fn(trackIndex) – callback when play button is clicked
- * onPause          fn() – callback when pause button is clicked
- * trackIndex       number    – index of this track in the tracks array
- * spotifyReady     boolean   – whether Spotify Web Playback SDK is ready
- * spotifyActive    boolean   – whether our device is the active Spotify device
+ * Modern, compact TrackRow with smooth animations and glassmorphism
  */
 export default function TrackRow({
   roomId,
@@ -45,26 +30,22 @@ export default function TrackRow({
   if (sortMode === 'dance'  && danceability != null) extraMetric = danceability.toFixed(2);
 
   const handlePlayPauseClick = (e) => {
-    e.stopPropagation(); // Prevent row click if we add that later
+    e.stopPropagation();
     
     if (isCurrentTrack && isPlaying) {
-      // Currently playing this track - pause it
       onPause();
     } else {
-      // Either not current track or current track is paused - play it
       onPlay(trackIndex);
     }
   };
 
-  // Track is playable if we have a Spotify ID
   const isPlayable = !!spotifyId;
   const canPlay = isPlayable && spotifyReady && spotifyActive;
 
-  // Determine button state and icon
   const getPlayButtonIcon = () => {
-    if (!isPlayable) return <Music size={16} />;
-    if (isCurrentTrack && isPlaying) return <Pause size={16} />;
-    return <Play size={16} />;
+    if (!isPlayable) return <Music size={14} />;
+    if (isCurrentTrack && isPlaying) return <Pause size={14} />;
+    return <Play size={14} />;
   };
 
   const getPlayButtonTitle = () => {
@@ -76,81 +57,136 @@ export default function TrackRow({
   };
 
   return (
-    <div className={`flex items-center gap-4 py-3 border-b transition-all duration-200 hover:bg-gray-50 ${
-      isCurrentTrack ? 'bg-blue-50 border-blue-200' : ''
-    }`}>
-      {/* position indicator */}
-      <div className="w-8 text-right text-sm font-semibold text-gray-400">
-        #{position}
+    <div 
+      className={`track-row group relative flex items-center gap-3 py-2.5 px-3 border-b border-gray-100/50 last:border-b-0 ${
+        isCurrentTrack 
+          ? 'bg-gradient-to-r from-blue-50/80 to-purple-50/80 border-blue-200/30' 
+          : 'hover:bg-white/60'
+      }`}
+      style={{
+        animationDelay: `${position * 50}ms`
+      }}
+    >
+      {/* Subtle glow for current track */}
+      {isCurrentTrack && (
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-400/5 to-purple-400/5 rounded-lg"></div>
+      )}
+
+      {/* Position indicator - more subtle and compact */}
+      <div className="w-6 text-right">
+        <span className={`text-xs font-medium ${
+          isCurrentTrack ? 'text-blue-600' : 'text-gray-400'
+        }`}>
+          {position}
+        </span>
       </div>
 
-      {/* play/pause button */}
+      {/* Play/pause button - more modern design */}
       <button
         onClick={handlePlayPauseClick}
         disabled={!canPlay}
-        className={`p-2 rounded-full transition-all duration-200 ${
+        className={`relative p-1.5 rounded-lg transition-all duration-300 ${
           canPlay 
-            ? 'hover:bg-blue-100 text-gray-600 hover:text-blue-600' 
-            : 'text-gray-300 cursor-not-allowed'
-        } ${isCurrentTrack && isPlaying ? 'bg-blue-100 text-blue-600' : ''}`}
+            ? `hover:bg-white/80 hover:shadow-lg hover:shadow-blue-500/20 ${
+                isCurrentTrack && isPlaying 
+                  ? 'bg-blue-500 text-white shadow-md shadow-blue-500/30' 
+                  : 'text-gray-600 hover:text-blue-600'
+              }` 
+            : 'text-gray-300 cursor-not-allowed opacity-50'
+        }`}
         title={getPlayButtonTitle()}
       >
         {getPlayButtonIcon()}
+        
+        {/* Pulsing indicator for currently playing */}
+        {isCurrentTrack && isPlaying && (
+          <div className="absolute inset-0 rounded-lg bg-blue-500 animate-pulse opacity-30"></div>
+        )}
       </button>
 
-      {/* album cover */}
-      {albumArt ? (
-        <img
-          src={albumArt}
-          alt=""
-          className="w-12 h-12 rounded object-cover shrink-0"
-        />
-      ) : (
-        <div className="w-12 h-12 rounded bg-gray-200 shrink-0" />
-      )}
+      {/* Album cover - smaller and more refined */}
+      <div className="relative group">
+        {albumArt ? (
+          <img
+            src={albumArt}
+            alt=""
+            className="w-10 h-10 rounded-lg object-cover shadow-sm transition-all duration-300 group-hover:shadow-md"
+          />
+        ) : (
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+            <Music size={12} className="text-gray-400" />
+          </div>
+        )}
+        
+        {/* Play overlay on hover */}
+        {canPlay && !isCurrentTrack && (
+          <div className="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+            <Play size={12} className="text-white" />
+          </div>
+        )}
+      </div>
 
-      {/* title + artist */}
+      {/* Title + artist - more compact spacing */}
       <div className="flex-1 min-w-0">
-        <p className={`font-medium truncate ${isCurrentTrack ? 'text-blue-700' : ''}`}>
+        <p className={`font-medium text-sm truncate leading-tight ${
+          isCurrentTrack ? 'text-blue-700' : 'text-gray-900'
+        } transition-colors duration-200`}>
           {title}
         </p>
-        <p className="text-sm text-gray-500 truncate">{artist}</p>
+        <p className="text-xs text-gray-500 truncate leading-tight mt-0.5">
+          {artist}
+        </p>
         
-        {/* Status indicators */}
-        {!isPlayable && (
-          <p className="text-xs text-gray-400">No Spotify ID available</p>
-        )}
-        {isPlayable && !spotifyReady && (
-          <p className="text-xs text-gray-400">Connecting to Spotify...</p>
-        )}
-        {isPlayable && spotifyReady && !spotifyActive && (
-          <p className="text-xs text-gray-400">Activate Spotify playback to play</p>
-        )}
+        {/* Compact status indicators */}
         {isCurrentTrack && isPlaying && (
-          <p className="text-xs text-blue-500 flex items-center gap-1">
-            <span className="inline-block w-1 h-1 bg-blue-500 rounded-full animate-pulse"></span>
-            Now playing
-          </p>
+          <div className="flex items-center gap-1 mt-0.5">
+            <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
+            <span className="text-xs text-blue-500 font-medium">Playing</span>
+          </div>
+        )}
+        {!isPlayable && (
+          <span className="text-xs text-gray-400">No Spotify ID</span>
         )}
       </div>
 
-      {/* show score in votes mode, otherwise the chosen metric */}
-      <div className="w-20 text-right font-semibold">
+      {/* Metric display - redesigned */}
+      <div className="text-right min-w-[60px]">
         {sortMode === 'votes' ? (
-          <span className="text-blue-600">{score}</span>
+          <div className="flex flex-col items-end">
+            <span className={`text-sm font-bold ${
+              score > 0 ? 'text-green-600' : score < 0 ? 'text-red-500' : 'text-gray-500'
+            }`}>
+              {score > 0 ? '+' : ''}{score}
+            </span>
+            <span className="text-xs text-gray-400">votes</span>
+          </div>
         ) : (
-          <span className="text-gray-700">{extraMetric || 'N/A'}</span>
+          <div className="flex flex-col items-end">
+            <span className="text-sm font-semibold text-gray-700">
+              {extraMetric?.split(' ')[0] || 'N/A'}
+            </span>
+            <span className="text-xs text-gray-400">
+              {extraMetric?.split(' ')[1] || ''}
+            </span>
+          </div>
         )}
       </div>
 
-      {/* vote buttons (only if authed) */}
+      {/* Vote buttons */}
       {isAuthed && (
-        <VoteButtons
-          roomId={roomId}
-          trackId={trackId}
-          score={score}
-          onTrackUpdate={onTrackUpdate}
-        />
+        <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
+          <VoteButtons
+            roomId={roomId}
+            trackId={trackId}
+            score={score}
+            onTrackUpdate={onTrackUpdate}
+          />
+        </div>
+      )}
+
+      {/* Subtle border highlight for current track */}
+      {isCurrentTrack && (
+        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-blue-500 to-purple-500 rounded-r"></div>
       )}
     </div>
   );
