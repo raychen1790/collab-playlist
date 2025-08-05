@@ -100,23 +100,23 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URI}?error=token_verification_failed`);
     }
     
-    // Set as HTTP‑only cookie for simplicity
-    res.cookie('spotify_token', access_token, {
+    // Better cookie settings for local development
+    const cookieOptions = {
       httpOnly: true,
       signed: true,
       maxAge: expires_in * 1000,          // ~1 hour
-      sameSite: 'none',                   // cross-site: API <-> Frontend
-      secure:  isProd,                    // required by SameSite=None
-    });
+      sameSite: isProd ? 'none' : 'lax',  // Use 'lax' for local dev, 'none' for production
+      secure: isProd,                     // Only secure in production
+    };
+
+    // Set as HTTP‑only cookie for simplicity
+    res.cookie('spotify_token', access_token, cookieOptions);
 
     // a refresh_token usually comes only on first auth. store it 30 days
     if (refresh_token) {
       res.cookie('refresh_token', refresh_token, {
-        httpOnly: true,
-        signed: true,
+        ...cookieOptions,
         maxAge: 30 * 24 * 3600 * 1000,    // 30 days
-        sameSite: 'none',
-        secure:  isProd,
       });
      }
 
@@ -149,7 +149,11 @@ router.get('/me', ensureSpotifyToken, async (req, res) => {
     
     // If token is invalid, clear cookies and return null user
     if (err.response?.status === 401) {
-      const clearOpts = { sameSite: 'none', secure: isProd, httpOnly: true };
+      const clearOpts = { 
+        sameSite: isProd ? 'none' : 'lax', 
+        secure: isProd, 
+        httpOnly: true 
+      };
       res.clearCookie('spotify_token', clearOpts);
       res.clearCookie('refresh_token', clearOpts);
     }
@@ -202,7 +206,11 @@ router.get('/reauth', (req, res) => {
   console.log('👉 GET /auth/reauth - clearing cookies and forcing reauth');
   
   // Clear existing cookies
-  const clearOpts = { sameSite: 'none', secure: isProd, httpOnly: true };
+  const clearOpts = { 
+    sameSite: isProd ? 'none' : 'lax', 
+    secure: isProd, 
+    httpOnly: true 
+  };
   res.clearCookie('spotify_token', clearOpts);
   res.clearCookie('refresh_token', clearOpts);
   
@@ -214,10 +222,18 @@ router.get('/reauth', (req, res) => {
 router.post('/logout', (req, res) => {
   console.log('👉 POST /auth/logout');
   
-  const clearOpts = { sameSite: 'none', secure: isProd, httpOnly: true };
+  const clearOpts = { 
+    sameSite: isProd ? 'none' : 'lax', 
+    secure: isProd, 
+    httpOnly: true 
+  };
   res.clearCookie('spotify_token', clearOpts);
   res.clearCookie('refresh_token', clearOpts);
-  res.clearCookie('spotify_auth_state', { httpOnly: true, sameSite: 'lax', secure: isProd });
+  res.clearCookie('spotify_auth_state', { 
+    httpOnly: true, 
+    sameSite: 'lax', 
+    secure: isProd 
+  });
   
   res.json({ success: true });
 });

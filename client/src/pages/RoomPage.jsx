@@ -14,7 +14,8 @@ import { useMusicPlayer } from '../hooks/useMusicPlayer.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { Play, Shuffle, Music, AlertCircle, Loader, Activity, Users, Clock, Zap } from 'lucide-react';
 
-const API = 'http://127.0.0.1:4000';
+// Get API URL from environment
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
 
 export default function RoomPage() {
   const { roomId } = useParams();
@@ -65,7 +66,7 @@ export default function RoomPage() {
       setLoading(true);
       try {
         const res = await fetch(
-          `${API}/api/rooms/${roomId}?sort=${mode}`,
+          `${API_URL}/api/rooms/${roomId}?sort=${mode}`,
           { credentials: 'include' }
         );
         if (res.ok) {

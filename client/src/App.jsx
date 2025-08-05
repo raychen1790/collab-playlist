@@ -2,12 +2,15 @@
 import { useContext } from 'react';
 import { AuthContext } from './contexts/AuthContext';
 
+// Get API URL from environment
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
+
 export default function App() {
   const { user } = useContext(AuthContext);
 
   const handleLogin = () => {
-    // this must be the explicit loopback URL to your Express route:
-    window.location.href = 'http://127.0.0.1:4000/auth/login';
+    // Use environment variable for the login URL
+    window.location.href = `${API_URL}/auth/login`;
   };
 
   return (

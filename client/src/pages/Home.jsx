@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 import { Music, Plus, ArrowRight, Sparkles } from 'lucide-react';
 
+// Get API URL from environment
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
+
 /* ----------  unauthenticated view ---------- */
 function LoginScreen() {
   return (
@@ -59,7 +62,7 @@ function LoginScreen() {
 
         {/* Login Button */}
         <a
-          href="http://127.0.0.1:4000/auth/login"
+          href={`${API_URL}/auth/login`}
           className="btn-primary w-full text-center inline-flex items-center justify-center gap-3 no-underline text-lg"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" className="fill-current">
@@ -96,7 +99,7 @@ function AuthedHome() {
     if (!roomName || !playlistId) return alert('Both fields required');
 
     setCreating(true);
-    const res = await fetch('http://127.0.0.1:4000/api/rooms', {
+    const res = await fetch(`${API_URL}/api/rooms`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
