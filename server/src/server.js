@@ -12,6 +12,7 @@ import votesRoutes from './routes/votes.js';
 const isProd = process.env.NODE_ENV === 'production';
 const FRONTEND = process.env.FRONTEND_URI;
 
+const app = express();
 app.set('trust proxy', 1);
 
 // Allow local dev + your deployed frontend
@@ -39,5 +40,8 @@ app.use('/auth', authRoutes);
 app.use('/api/rooms', roomsRoutes);
 app.use('/api/rooms', votesRoutes);
 
+app.get('/health', (_req, res) => res.send('ok'));
+
 const PORT = 4000;
 app.listen(PORT, () => console.log(`🚀 Server listening on http://localhost:${PORT}`));
+
