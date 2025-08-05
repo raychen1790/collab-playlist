@@ -23,12 +23,15 @@ export async function ensureSpotifyToken(req, res, next) {
     access = data.access_token;
 
     // set new 1-hour cookie
-    res.cookie('spotify_token', access, {
-      httpOnly: true,
-      signed:   true,
-      maxAge:   data.expires_in * 1000,  // seconds → ms
-    });
-
+    const isProd = process.env.NODE_ENV === 'production';
+  res.cookie('spotify_token', access, {
+    httpOnly: true,
+    signed:   true,
+    maxAge:   data.expires_in * 1000,
+    sameSite: 'none',
+    secure:   isProd,
+  });
+  
     req.spotifyAccessToken = access;
     return next();
   } catch (err) {

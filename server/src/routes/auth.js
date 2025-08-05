@@ -5,6 +5,7 @@ import { ensureSpotifyToken } from '../middleware/ensureSpotifyToken.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 
 const router = express.Router();
+const isProd = process.env.NODE_ENV === 'production';
 
 // Updated scopes to include Web Playback SDK requirements
 const scopes = [
@@ -104,7 +105,8 @@ router.get('/callback', async (req, res) => {
       httpOnly: true,
       signed: true,
       maxAge: expires_in * 1000,          // ~1 hour
-      sameSite: 'lax'
+      sameSite: 'none',                   // cross-site: API <-> Frontend
+      secure:  isProd,                    // required by SameSite=None
     });
 
     // a refresh_token usually comes only on first auth. store it 30 days
@@ -113,9 +115,10 @@ router.get('/callback', async (req, res) => {
         httpOnly: true,
         signed: true,
         maxAge: 30 * 24 * 3600 * 1000,    // 30 days
-        sameSite: 'lax'
+        sameSite: 'none',
+        secure:  isProd,
       });
-    }
+     }
 
     console.log('🏠 Redirecting to frontend');
     res.redirect(process.env.FRONTEND_URI);
@@ -146,8 +149,9 @@ router.get('/me', ensureSpotifyToken, async (req, res) => {
     
     // If token is invalid, clear cookies and return null user
     if (err.response?.status === 401) {
-      res.clearCookie('spotify_token');
-      res.clearCookie('refresh_token');
+      const clearOpts = { sameSite: 'none', secure: isProd, httpOnly: true };
+      res.clearCookie('spotify_token', clearOpts);
+      res.clearCookie('refresh_token', clearOpts);
     }
     
     res.json({ user: null });
@@ -198,8 +202,9 @@ router.get('/reauth', (req, res) => {
   console.log('👉 GET /auth/reauth - clearing cookies and forcing reauth');
   
   // Clear existing cookies
-  res.clearCookie('spotify_token');
-  res.clearCookie('refresh_token');
+  const clearOpts = { sameSite: 'none', secure: isProd, httpOnly: true };
+  res.clearCookie('spotify_token', clearOpts);
+  res.clearCookie('refresh_token', clearOpts);
   
   // Redirect to login with show_dialog=true to force fresh consent
   res.redirect('/auth/login');
@@ -209,9 +214,10 @@ router.get('/reauth', (req, res) => {
 router.post('/logout', (req, res) => {
   console.log('👉 POST /auth/logout');
   
-  res.clearCookie('spotify_token');
-  res.clearCookie('refresh_token');
-  res.clearCookie('spotify_auth_state');
+  const clearOpts = { sameSite: 'none', secure: isProd, httpOnly: true };
+  res.clearCookie('spotify_token', clearOpts);
+  res.clearCookie('refresh_token', clearOpts);
+  res.clearCookie('spotify_auth_state', { httpOnly: true, sameSite: 'lax', secure: isProd });
   
   res.json({ success: true });
 });
