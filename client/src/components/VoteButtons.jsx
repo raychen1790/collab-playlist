@@ -1,4 +1,4 @@
-// client/src/components/VoteButtons.jsx
+// client/src/components/VoteButtons.jsx - Enhanced with bigger, more colorful buttons
 import { useState, useEffect } from 'react';
 import { ThumbsUp, ThumbsDown, Minus } from 'lucide-react';
 
@@ -53,64 +53,64 @@ export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
   };
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-2">
       {/* Upvote */}
       <button
-        className={`vote-btn p-1.5 rounded-lg transition-all duration-200 ${
+        className={`vote-btn upvote transition-all duration-300 ${
           pending 
-            ? 'bg-gray-100 cursor-not-allowed opacity-50' 
+            ? 'opacity-50 cursor-not-allowed' 
             : lastVote === 1
-            ? 'bg-green-100 text-green-700 shadow-sm'
-            : 'hover:bg-green-50 hover:text-green-600 text-gray-500'
+            ? 'scale-110 shadow-lg'
+            : 'hover:scale-110'
         }`}
         onClick={() => submitVote(1)}
         disabled={pending}
         title="Upvote"
       >
-        <ThumbsUp size={12} className={lastVote === 1 ? 'fill-current' : ''} />
+        <ThumbsUp size={14} className={lastVote === 1 ? 'fill-current' : ''} />
       </button>
 
       {/* Neutral/Remove vote */}
       <button
-        className={`vote-btn p-1.5 rounded-lg transition-all duration-200 ${
+        className={`vote-btn neutral transition-all duration-300 ${
           pending 
-            ? 'bg-gray-100 cursor-not-allowed opacity-50' 
+            ? 'opacity-50 cursor-not-allowed' 
             : lastVote === 0
-            ? 'bg-gray-100 text-gray-700 shadow-sm'
-            : 'hover:bg-gray-50 hover:text-gray-600 text-gray-400'
+            ? 'scale-110 shadow-lg'
+            : 'hover:scale-110'
         }`}
         onClick={() => submitVote(0)}
         disabled={pending}
         title="Remove vote"
       >
-        <Minus size={12} />
+        <Minus size={14} />
       </button>
 
       {/* Downvote */}
       <button
-        className={`vote-btn p-1.5 rounded-lg transition-all duration-200 ${
+        className={`vote-btn downvote transition-all duration-300 ${
           pending 
-            ? 'bg-gray-100 cursor-not-allowed opacity-50' 
+            ? 'opacity-50 cursor-not-allowed' 
             : lastVote === -1
-            ? 'bg-red-100 text-red-700 shadow-sm'
-            : 'hover:bg-red-50 hover:text-red-600 text-gray-500'
+            ? 'scale-110 shadow-lg'
+            : 'hover:scale-110'
         }`}
         onClick={() => submitVote(-1)}
         disabled={pending}
         title="Downvote"
       >
-        <ThumbsDown size={12} className={lastVote === -1 ? 'fill-current' : ''} />
+        <ThumbsDown size={14} className={lastVote === -1 ? 'fill-current' : ''} />
       </button>
 
       {/* Score display with loading state */}
-      <div className="flex items-center gap-1 ml-1">
+      <div className="flex items-center gap-1 ml-2">
         {pending && (
-          <div className="loading-spinner w-3 h-3"></div>
+          <div className="loading-spinner w-4 h-4"></div>
         )}
-        <span className={`text-xs font-semibold min-w-[20px] text-center transition-all duration-300 ${
-          pending ? 'text-gray-400' : 
-          localScore > 0 ? 'text-green-600' : 
-          localScore < 0 ? 'text-red-500' : 'text-gray-500'
+        <span className={`text-sm font-fun font-bold min-w-[24px] text-center transition-all duration-300 px-2 py-1 rounded-lg ${
+          pending ? 'text-gray-400 bg-gray-100' : 
+          localScore > 0 ? 'text-green-600 bg-green-100' : 
+          localScore < 0 ? 'text-red-500 bg-red-100' : 'text-gray-500 bg-gray-100'
         }`}>
           {localScore > 0 ? '+' : ''}{localScore}
         </span>

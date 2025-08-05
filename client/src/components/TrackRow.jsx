@@ -1,9 +1,9 @@
-// client/src/components/TrackRow.jsx
+// client/src/components/TrackRow.jsx - Enhanced with better styling and compact design
 import VoteButtons from './VoteButtons.jsx';
 import { Play, Pause, Music } from 'lucide-react';
 
 /**
- * Modern, compact TrackRow with smooth animations and glassmorphism
+ * Enhanced, compact TrackRow with fun styling and animations
  */
 export default function TrackRow({
   roomId,
@@ -43,9 +43,9 @@ export default function TrackRow({
   const canPlay = isPlayable && spotifyReady && spotifyActive;
 
   const getPlayButtonIcon = () => {
-    if (!isPlayable) return <Music size={14} />;
-    if (isCurrentTrack && isPlaying) return <Pause size={14} />;
-    return <Play size={14} />;
+    if (!isPlayable) return <Music size={16} />;
+    if (isCurrentTrack && isPlaying) return <Pause size={16} />;
+    return <Play size={16} />;
   };
 
   const getPlayButtonTitle = () => {
@@ -58,41 +58,41 @@ export default function TrackRow({
 
   return (
     <div 
-      className={`track-row group relative flex items-center gap-3 py-2.5 px-3 border-b border-gray-100/50 last:border-b-0 ${
+      className={`track-row-compact group relative flex items-center gap-3 py-3 px-4 border-b border-white/10 last:border-b-0 transition-all duration-300 ${
         isCurrentTrack 
-          ? 'bg-gradient-to-r from-blue-50/80 to-purple-50/80 border-blue-200/30' 
-          : 'hover:bg-white/60'
+          ? 'bg-gradient-to-r from-blue-400/20 to-purple-400/20 border-blue-300/30' 
+          : 'hover:bg-white/10'
       }`}
       style={{
-        animationDelay: `${position * 50}ms`
+        animationDelay: `${position * 30}ms`
       }}
     >
       {/* Subtle glow for current track */}
       {isCurrentTrack && (
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-400/5 to-purple-400/5 rounded-lg"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 to-purple-400/10 rounded-lg"></div>
       )}
 
-      {/* Position indicator - more subtle and compact */}
-      <div className="w-6 text-right">
-        <span className={`text-xs font-medium ${
-          isCurrentTrack ? 'text-blue-600' : 'text-gray-400'
+      {/* Position indicator - more compact */}
+      <div className="w-8 text-center">
+        <span className={`text-sm font-fun font-bold ${
+          isCurrentTrack ? 'text-blue-300' : 'text-gray-400'
         }`}>
           {position}
         </span>
       </div>
 
-      {/* Play/pause button - more modern design */}
+      {/* Play/pause button - enhanced styling */}
       <button
         onClick={handlePlayPauseClick}
         disabled={!canPlay}
-        className={`relative p-1.5 rounded-lg transition-all duration-300 ${
+        className={`play-btn relative p-2 transition-all duration-300 ${
           canPlay 
-            ? `hover:bg-white/80 hover:shadow-lg hover:shadow-blue-500/20 ${
+            ? `${
                 isCurrentTrack && isPlaying 
-                  ? 'bg-blue-500 text-white shadow-md shadow-blue-500/30' 
-                  : 'text-gray-600 hover:text-blue-600'
+                  ? 'playing' 
+                  : ''
               }` 
-            : 'text-gray-300 cursor-not-allowed opacity-50'
+            : 'opacity-30 cursor-not-allowed'
         }`}
         title={getPlayButtonTitle()}
       >
@@ -100,7 +100,7 @@ export default function TrackRow({
         
         {/* Pulsing indicator for currently playing */}
         {isCurrentTrack && isPlaying && (
-          <div className="absolute inset-0 rounded-lg bg-blue-500 animate-pulse opacity-30"></div>
+          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-400 to-purple-400 animate-pulse opacity-20"></div>
         )}
       </button>
 
@@ -110,42 +110,42 @@ export default function TrackRow({
           <img
             src={albumArt}
             alt=""
-            className="w-10 h-10 rounded-lg object-cover shadow-sm transition-all duration-300 group-hover:shadow-md"
+            className="w-12 h-12 rounded-xl object-cover shadow-md transition-all duration-300 group-hover:shadow-lg group-hover:scale-105"
           />
         ) : (
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-            <Music size={12} className="text-gray-400" />
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center shadow-md">
+            <Music size={14} className="text-gray-400" />
           </div>
         )}
         
         {/* Play overlay on hover */}
         {canPlay && !isCurrentTrack && (
-          <div className="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
-            <Play size={12} className="text-white" />
+          <div className="absolute inset-0 bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+            <Play size={14} className="text-white" />
           </div>
         )}
       </div>
 
       {/* Title + artist - more compact spacing */}
       <div className="flex-1 min-w-0">
-        <p className={`font-medium text-sm truncate leading-tight ${
-          isCurrentTrack ? 'text-blue-700' : 'text-gray-900'
+        <p className={`font-fun font-bold track-title truncate leading-tight ${
+          isCurrentTrack ? 'text-blue-200' : 'text-gray-800'
         } transition-colors duration-200`}>
           {title}
         </p>
-        <p className="text-xs text-gray-500 truncate leading-tight mt-0.5">
+        <p className="track-artist text-gray-600 truncate leading-tight mt-0.5 font-main font-medium">
           {artist}
         </p>
         
         {/* Compact status indicators */}
         {isCurrentTrack && isPlaying && (
-          <div className="flex items-center gap-1 mt-0.5">
-            <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
-            <span className="text-xs text-blue-500 font-medium">Playing</span>
+          <div className="flex items-center gap-1 mt-1">
+            <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div>
+            <span className="text-xs text-blue-400 font-fun font-bold">Playing</span>
           </div>
         )}
         {!isPlayable && (
-          <span className="text-xs text-gray-400">No Spotify ID</span>
+          <span className="text-xs text-gray-400 font-main">No Spotify ID</span>
         )}
       </div>
 
@@ -153,19 +153,19 @@ export default function TrackRow({
       <div className="text-right min-w-[60px]">
         {sortMode === 'votes' ? (
           <div className="flex flex-col items-end">
-            <span className={`text-sm font-bold ${
-              score > 0 ? 'text-green-600' : score < 0 ? 'text-red-500' : 'text-gray-500'
+            <span className={`text-lg font-fun font-bold ${
+              score > 0 ? 'text-green-400' : score < 0 ? 'text-red-400' : 'text-gray-500'
             }`}>
               {score > 0 ? '+' : ''}{score}
             </span>
-            <span className="text-xs text-gray-400">votes</span>
+            <span className="text-xs text-gray-400 font-main">votes</span>
           </div>
         ) : (
           <div className="flex flex-col items-end">
-            <span className="text-sm font-semibold text-gray-700">
+            <span className="text-lg font-fun font-bold text-gray-700">
               {extraMetric?.split(' ')[0] || 'N/A'}
             </span>
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 font-main">
               {extraMetric?.split(' ')[1] || ''}
             </span>
           </div>
@@ -174,7 +174,7 @@ export default function TrackRow({
 
       {/* Vote buttons */}
       {isAuthed && (
-        <div className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
+        <div className="opacity-100 md:opacity-80 md:group-hover:opacity-100 transition-opacity duration-200">
           <VoteButtons
             roomId={roomId}
             trackId={trackId}
@@ -186,7 +186,7 @@ export default function TrackRow({
 
       {/* Subtle border highlight for current track */}
       {isCurrentTrack && (
-        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gradient-to-b from-blue-500 to-purple-500 rounded-r"></div>
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 to-purple-400 rounded-r"></div>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-// client/src/pages/RoomPage.jsx - Modern redesign with glassmorphism and animations
+// client/src/pages/RoomPage.jsx - Enhanced design with compact tracks and fun styling
 import {
   useContext,
   useEffect,
@@ -245,11 +245,11 @@ export default function RoomPage() {
   /* ----------- render ----------- */
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center font-main">
         <div className="glass-card p-8 text-center max-w-sm">
           <div className="loading-spinner w-12 h-12 mx-auto mb-4"></div>
-          <h3 className="text-lg font-semibold mb-2">Loading room...</h3>
-          <p className="text-gray-500 text-sm">Please wait while we fetch your playlist</p>
+          <h3 className="text-lg font-fun font-bold mb-2">Loading room...</h3>
+          <p className="text-gray-500 text-sm font-medium">Please wait while we fetch your playlist</p>
         </div>
       </div>
     );
@@ -257,11 +257,11 @@ export default function RoomPage() {
 
   if (!room) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center font-main">
         <div className="glass-card p-8 text-center max-w-sm">
           <AlertCircle size={48} className="mx-auto mb-4 text-red-400" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Room not found</h2>
-          <p className="text-gray-600">The room you're looking for doesn't exist or has been deleted.</p>
+          <h2 className="text-xl font-fun font-bold text-gray-900 mb-2">Room not found</h2>
+          <p className="text-gray-600 font-medium">The room you're looking for doesn't exist or has been deleted.</p>
         </div>
       </div>
     );
@@ -272,92 +272,62 @@ export default function RoomPage() {
 
   const getSortIcon = (mode) => {
     switch(mode) {
-      case 'votes': return <Users size={16} />;
-      case 'tempo': return <Activity size={16} />;
-      case 'energy': return <Zap size={16} />;
-      case 'dance': return <Music size={16} />;
-      default: return <Clock size={16} />;
+      case 'votes': return <Users size={18} />;
+      case 'tempo': return <Activity size={18} />;
+      case 'energy': return <Zap size={18} />;
+      case 'dance': return <Music size={18} />;
+      default: return <Clock size={18} />;
     }
   };
 
   return (
-    <div className="min-h-screen pb-40">
+    <div className="min-h-screen pb-40 font-main">
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
         
-        {/* Room Header - Enhanced glassmorphism design */}
-        <div className="glass-card p-6">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">{room.name}</h1>
-              <p className="text-sm text-gray-600 mb-4">
-                Spotify Playlist: <span className="font-medium">{room.spotify_playlist}</span>
-              </p>
-            </div>
-            
-            {/* Live indicator */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-100 rounded-full">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs font-medium text-green-700">Live</span>
-            </div>
-          </div>
+        {/* Room Header - Simplified and more prominent */}
+        <div className="glass-card p-8 text-center">
+          <h1 className="playlist-title">{room.name}</h1>
+          <p className="track-count">{tracks.length} Total Tracks</p>
           
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white/60 rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-gray-900">{tracks.length}</div>
-              <div className="text-xs text-gray-500">Total Tracks</div>
-            </div>
-            <div className="bg-white/60 rounded-lg p-3 text-center">
-              <div className="text-2xl font-bold text-blue-600">{playableTracksCount}</div>
-              <div className="text-xs text-gray-500">Playable</div>
-            </div>
-            {playQueue.length > 0 && (
-              <div className="bg-white/60 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-purple-600">{playQueue.length}</div>
-                <div className="text-xs text-gray-500">In Queue</div>
-              </div>
-            )}
-            {shuffleMode && (
-              <div className="bg-white/60 rounded-lg p-3 text-center">
-                <Shuffle size={24} className="mx-auto text-blue-600 mb-1" />
-                <div className="text-xs text-gray-500">Shuffle On</div>
-              </div>
-            )}
+          {/* Live indicator */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-400/20 to-green-500/20 backdrop-blur-sm rounded-full border border-green-400/30 mb-6">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <span className="text-sm font-fun font-bold text-green-100">Live</span>
           </div>
 
           {/* Spotify Status */}
           {spotifyError && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-100 rounded-lg">
+            <div className="mb-6 p-4 bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-xl">
               <div className="flex items-center gap-3">
                 <AlertCircle size={20} className="text-red-500 shrink-0" />
                 <div>
-                  <p className="font-medium text-red-800">Spotify Connection Error</p>
-                  <p className="text-sm text-red-600">{spotifyError}</p>
+                  <p className="font-fun font-bold text-red-800">Spotify Connection Error</p>
+                  <p className="text-sm text-red-600 font-medium">{spotifyError}</p>
                 </div>
               </div>
             </div>
           )}
 
           {!spotifyReady && !spotifyError && (
-            <div className="mb-4 p-4 bg-yellow-50 border border-yellow-100 rounded-lg">
+            <div className="mb-6 p-4 bg-yellow-50/80 backdrop-blur-sm border border-yellow-200/50 rounded-xl">
               <div className="flex items-center gap-3">
                 <Loader size={20} className="animate-spin text-yellow-600" />
                 <div>
-                  <p className="font-medium text-yellow-800">Connecting to Spotify</p>
-                  <p className="text-sm text-yellow-600">Setting up Web Playback SDK...</p>
+                  <p className="font-fun font-bold text-yellow-800">Connecting to Spotify</p>
+                  <p className="text-sm text-yellow-600 font-medium">Setting up Web Playback SDK...</p>
                 </div>
               </div>
             </div>
           )}
 
           {spotifyReady && !spotifyActive && (
-            <div className="mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+            <div className="mb-6 p-4 bg-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-xl">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Music size={20} className="text-blue-600" />
                   <div>
-                    <p className="font-medium text-blue-800">Spotify Connected</p>
-                    <p className="text-sm text-blue-600">Ready to play music on this device</p>
+                    <p className="font-fun font-bold text-blue-800">Spotify Connected</p>
+                    <p className="text-sm text-blue-600 font-medium">Ready to play music on this device</p>
                   </div>
                 </div>
                 <button 
@@ -372,33 +342,35 @@ export default function RoomPage() {
           
           {/* Action buttons */}
           {hasPlayableTracks && (
-            <div className="flex gap-3">
+            <div className="flex gap-4 justify-center">
               <button
                 onClick={handlePlayAll}
                 disabled={!spotifyReady || !spotifyActive}
-                className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
               >
-                <Play size={16} />
+                <Play size={20} />
                 Play All
               </button>
-              <button
-                onClick={handleShuffle}
-                disabled={!spotifyReady}
-                className={`btn-secondary flex items-center gap-2 disabled:opacity-50 ${
-                  shuffleMode ? 'bg-blue-50 border-blue-200 text-blue-700' : ''
-                }`}
-              >
-                <Shuffle size={16} />
-                {shuffleMode ? 'Shuffle On' : 'Shuffle'}
-              </button>
+              {sortMode === 'votes' && (
+                <button
+                  onClick={handleShuffle}
+                  disabled={!spotifyReady}
+                  className={`btn-secondary flex items-center gap-3 disabled:opacity-50 text-lg ${
+                    shuffleMode ? 'bg-gradient-to-r from-blue-400/20 to-purple-400/20 border-blue-300/50' : ''
+                  }`}
+                >
+                  <Shuffle size={20} />
+                  {shuffleMode ? 'Shuffle On' : 'Shuffle'}
+                </button>
+              )}
             </div>
           )}
           
           {!hasPlayableTracks && tracks.length > 0 && (
-            <div className="p-4 bg-yellow-50 border border-yellow-100 rounded-lg">
+            <div className="p-4 bg-yellow-50/80 backdrop-blur-sm border border-yellow-200/50 rounded-xl">
               <div className="flex items-center gap-3">
                 <AlertCircle size={20} className="text-yellow-600" />
-                <p className="text-sm text-yellow-800">
+                <p className="text-sm text-yellow-800 font-medium">
                   No tracks with Spotify IDs available. Please check that the playlist contains valid Spotify tracks.
                 </p>
               </div>
@@ -406,18 +378,14 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* Sort Toolbar - Modern pill design */}
-        <div className="glass-card p-4">
-          <div className="flex flex-wrap gap-2">
+        {/* Sort Toolbar - Enhanced buttons */}
+        <div className="glass-card p-6">
+          <div className="flex flex-wrap gap-3 justify-center">
             {['votes', 'tempo', 'energy', 'dance'].map((mode) => (
               <button
                 key={mode}
                 onClick={() => changeSort(mode)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                  sortMode === mode
-                    ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/25'
-                    : 'bg-white/60 text-gray-700 hover:bg-white hover:shadow-md'
-                }`}
+                className={`btn-sort ${sortMode === mode ? 'active' : 'inactive'}`}
               >
                 {getSortIcon(mode)}
                 {mode === 'dance' ? 'Danceability' : mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -426,18 +394,18 @@ export default function RoomPage() {
           </div>
         </div>
 
-        {/* Tracks List - Enhanced with better spacing */}
+        {/* Tracks List - More compact */}
         <div className="glass-card overflow-hidden">
           {tracks.length === 0 ? (
             <div className="p-12 text-center">
               <Music size={48} className="mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No tracks yet</h3>
-              <p className="text-gray-500">
+              <h3 className="text-lg font-fun font-bold text-gray-900 mb-2">No tracks yet</h3>
+              <p className="text-gray-500 font-medium">
                 Tracks will appear here when they're added to the connected Spotify playlist.
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100/50">
+            <div className="max-h-96 overflow-y-auto">
               {tracks.map((track, index) => {
                 const isCurrentTrack = isTrackCurrent(index);
                 const isCurrentlyPlaying = isTrackCurrentlyPlaying(index);

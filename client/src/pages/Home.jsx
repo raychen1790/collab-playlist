@@ -1,4 +1,4 @@
-// client/src/pages/Home.jsx - Modern redesign with glassmorphism
+// client/src/pages/Home.jsx - Enhanced design with fun fonts and better layout
 import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
@@ -7,49 +7,51 @@ import { Music, Plus, ArrowRight, Sparkles } from 'lucide-react';
 /* ----------  unauthenticated view ---------- */
 function LoginScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="max-w-md w-full mx-4">
+    <div className="min-h-screen flex items-center justify-center font-main">
+      <div className="max-w-lg w-full mx-4">
         {/* Hero Section */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl mb-6 shadow-lg shadow-blue-500/25">
-            <Music size={32} className="text-white" />
+          <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-white/20 to-white/10 backdrop-blur-lg rounded-3xl mb-8 shadow-2xl border border-white/20">
+            <Music size={48} className="text-white" />
           </div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent mb-4">
+          <h1 className="text-5xl font-fun font-bold text-white mb-6 drop-shadow-lg">
             Collaborative Playlist
           </h1>
-          <p className="text-gray-600 text-lg leading-relaxed">
+          <p className="text-white/90 text-xl leading-relaxed font-medium">
             Create shared playlists where everyone can vote on their favorite tracks
           </p>
         </div>
 
-        {/* Features */}
-        <div className="glass-card p-6 mb-8">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Music size={16} className="text-blue-600" />
+        {/* Features - Horizontal layout */}
+        <div className="glass-card p-8 mb-8">
+          <div className="space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
+                <Music size={24} className="text-white" />
               </div>
-              <div>
-                <p className="font-medium text-gray-900">Real-time voting</p>
-                <p className="text-sm text-gray-500">Vote up or down on any track</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                <Sparkles size={16} className="text-purple-600" />
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">Live playback</p>
-                <p className="text-sm text-gray-500">Stream directly from Spotify</p>
+              <div className="flex-1">
+                <p className="font-fun font-bold text-gray-900 text-lg">Real-time voting</p>
+                <p className="text-gray-600 font-medium">Vote up or down on any track instantly</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <Plus size={16} className="text-green-600" />
+            
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
+                <Sparkles size={24} className="text-white" />
               </div>
-              <div>
-                <p className="font-medium text-gray-900">Easy sharing</p>
-                <p className="text-sm text-gray-500">Share room links with friends</p>
+              <div className="flex-1">
+                <p className="font-fun font-bold text-gray-900 text-lg">Live playback</p>
+                <p className="text-gray-600 font-medium">Stream directly from Spotify with friends</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
+                <Plus size={24} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-fun font-bold text-gray-900 text-lg">Easy sharing</p>
+                <p className="text-gray-600 font-medium">Share room links with friends effortlessly</p>
               </div>
             </div>
           </div>
@@ -58,16 +60,16 @@ function LoginScreen() {
         {/* Login Button */}
         <a
           href="http://127.0.0.1:4000/auth/login"
-          className="btn-primary w-full text-center inline-flex items-center justify-center gap-2 no-underline"
+          className="btn-primary w-full text-center inline-flex items-center justify-center gap-3 no-underline text-lg"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" className="fill-current">
+          <svg width="24" height="24" viewBox="0 0 24 24" className="fill-current">
             <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.299.421-1.02.599-1.559.3z"/>
           </svg>
           Continue with Spotify
-          <ArrowRight size={16} />
+          <ArrowRight size={20} />
         </a>
 
-        <p className="text-center text-xs text-gray-500 mt-4">
+        <p className="text-center text-sm text-white/70 mt-6 font-medium">
           Requires Spotify Premium for full playback features
         </p>
       </div>
@@ -118,32 +120,32 @@ function AuthedHome() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="max-w-md w-full mx-4 space-y-6">
+    <div className="min-h-screen flex items-center justify-center font-main">
+      <div className="max-w-lg w-full mx-4 space-y-6">
         
         {/* Header */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl mb-6 shadow-lg shadow-blue-500/25">
-            <Music size={32} className="text-white" />
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-white/20 to-white/10 backdrop-blur-lg rounded-3xl mb-8 shadow-2xl border border-white/20">
+            <Music size={40} className="text-white" />
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent mb-2">
+          <h1 className="text-4xl font-fun font-bold text-white mb-4 drop-shadow-lg">
             Welcome back!
           </h1>
-          <p className="text-gray-600">Create a new room or join an existing one</p>
+          <p className="text-white/90 text-lg font-medium">Create a new room or join an existing one</p>
         </div>
 
         {/* Create Room */}
-        <div className="glass-card p-6">
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <Plus size={16} className="text-green-600" />
+        <div className="glass-card p-8">
+          <form onSubmit={handleCreate} className="space-y-6">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Plus size={20} className="text-white" />
               </div>
-              <h2 className="text-lg font-semibold">Create a Room</h2>
+              <h2 className="text-xl font-fun font-bold text-gray-900">Create a Room</h2>
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-bold text-gray-700 mb-3 font-fun">
                 Room Name
               </label>
               <input 
@@ -156,7 +158,7 @@ function AuthedHome() {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-bold text-gray-700 mb-3 font-fun">
                 Spotify Playlist
               </label>
               <input 
@@ -166,7 +168,7 @@ function AuthedHome() {
                 className="input-modern"
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 mt-2 font-medium">
                 You can paste the full Spotify URL or just the playlist ID
               </p>
             </div>
@@ -174,16 +176,16 @@ function AuthedHome() {
             <button 
               type="submit" 
               disabled={creating}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed text-lg"
             >
               {creating ? (
                 <>
-                  <div className="loading-spinner w-4 h-4 mr-2"></div>
+                  <div className="loading-spinner w-5 h-5 mr-3"></div>
                   Creating...
                 </>
               ) : (
                 <>
-                  <Plus size={16} className="mr-2" />
+                  <Plus size={20} className="mr-3" />
                   Create Room
                 </>
               )}
@@ -194,25 +196,25 @@ function AuthedHome() {
         {/* Divider */}
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-200"></div>
+            <div className="w-full border-t-2 border-white/20"></div>
           </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-gradient-to-br from-blue-50 to-purple-50 text-gray-500">or</span>
+          <div className="relative flex justify-center text-lg">
+            <span className="px-4 bg-transparent text-white/80 font-fun font-bold">or</span>
           </div>
         </div>
 
         {/* Join Room */}
-        <div className="glass-card p-6">
-          <form onSubmit={handleJoin} className="space-y-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <ArrowRight size={16} className="text-blue-600" />
+        <div className="glass-card p-8">
+          <form onSubmit={handleJoin} className="space-y-6">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                <ArrowRight size={20} className="text-white" />
               </div>
-              <h2 className="text-lg font-semibold">Join a Room</h2>
+              <h2 className="text-xl font-fun font-bold text-gray-900">Join a Room</h2>
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-bold text-gray-700 mb-3 font-fun">
                 Room ID
               </label>
               <input 
@@ -226,9 +228,9 @@ function AuthedHome() {
             
             <button 
               type="submit"
-              className="btn-secondary w-full"
+              className="btn-secondary w-full text-lg"
             >
-              <ArrowRight size={16} className="mr-2" />
+              <ArrowRight size={20} className="mr-3" />
               Join Room
             </button>
           </form>
