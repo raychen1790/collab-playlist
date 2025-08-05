@@ -31,7 +31,6 @@ const corsOptions = {
   credentials: true,
 };
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // handle preflight
 
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET));
