@@ -1,6 +1,9 @@
-// client/src/components/VoteButtons.jsx - Enhanced with bigger, more colorful buttons
+// client/src/components/VoteButtons.jsx - Fixed with environment variable
 import { useState, useEffect } from 'react';
 import { ThumbsUp, ThumbsDown, Minus } from 'lucide-react';
+
+// Get API URL from environment variable
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
 
 export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
   const [pending, setPending] = useState(false);
@@ -18,8 +21,10 @@ export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
     setLastVote(value);
 
     try {
+      console.log('🗳️ Submitting vote to:', `${API_URL}/api/rooms/${roomId}/tracks/${trackId}/vote`);
+      
       const res = await fetch(
-        `http://127.0.0.1:4000/api/rooms/${roomId}/tracks/${trackId}/vote`,
+        `${API_URL}/api/rooms/${roomId}/tracks/${trackId}/vote`,
         {
           method: 'POST',
           credentials: 'include',
@@ -30,6 +35,7 @@ export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
 
       if (res.ok) {
         const json = await res.json();
+        console.log('✅ Vote submitted successfully:', json);
         
         // Update local score immediately for responsive UI
         setLocalScore(json.newScore);
@@ -39,13 +45,14 @@ export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
           onTrackUpdate(trackId, json.newScore);
         }
       } else {
-        const { error } = await res.json();
-        alert(error);
+        const errorData = await res.json();
+        console.error('❌ Vote submission failed:', res.status, errorData);
+        alert(errorData.error || 'Failed to submit vote');
         setLastVote(null);
       }
     } catch (error) {
-      console.error('Vote submission failed:', error);
-      alert('Failed to submit vote');
+      console.error('❌ Vote submission error:', error);
+      alert('Failed to submit vote - network error');
       setLastVote(null);
     }
     
