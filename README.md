@@ -1,30 +1,27 @@
 # 🎵 Collaborative Playlist — Real-Time Spotify Voting App
 
-Create a shared “party room”, let guests log in with Spotify, vote tracks
-up / down, and reorder the list live by score, tempo, energy, or
-danceability.  Playback happens in-browser via Spotify Web Playback SDK.
-
+A full-stack, real-time web application that transforms any Spotify playlist into a collaborative, crowd-controlled experience.
+Hosts create a shared “party room”, guests log in with their Spotify account, vote tracks up/down, and instantly reorder the playlist by votes, tempo, energy, or danceability.
+Playback is handled entirely in-browser via the Spotify Web Playback SDK
 ---
 
-## ✨ Features
-| Category | Highlights |
-| -------- | ---------- |
-| **Auth & Playback** | • Spotify OAuth 2.0 + silent token refresh<br>• Web Playback SDK with play / pause / previous / next, shuffle, seek, volume |
-| **Real-time** | • Supabase Realtime streams `votes` + `tracks`<br>• Instant re-sort across all browsers |
-| **Audio-feature logic** | • Falls back to **MusicBrainz + AcousticBrainz** when Spotify features are missing<br>• Caches results in Postgres |
-| **Data model** | `rooms`, `tracks`, `votes`, `audio_features`, `room_members` with RLS |
-| **UI / UX** | • React + Tailwind<br>• Always-visible bottom player bar with progress slider<br>• Sort toolbar (votes / tempo / energy / danceability)<br>• Host “Play All” & shuffle queue |
-| **Dev workflow** | Vite HMR, Express API, Supabase CLI locally, one-command deploy to Render / Netlify |
+| Category                      | Highlights                                                                                                                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Authentication & Playback** | • Secure Spotify OAuth 2.0 with silent token refresh<br>• Spotify Web Playback SDK: play, pause, skip, shuffle, seek, volume control<br>• Device activation flow for browser-based playback                   |
+| **Real-Time Collaboration**   | • Supabase Realtime subscriptions for `votes` and `tracks`<br>• Instant re-sorting and live UI updates across all connected clients                                                                           |
+| **Smart Audio Features**      | • Uses Spotify audio features where available<br>• Falls back to **MusicBrainz + AcousticBrainz** APIs for tempo/energy/danceability<br>• All results cached in Postgres for fast retrieval                   |
+| **Robust Data Model**         | • Normalized schema: `rooms`, `tracks`, `votes`, `audio_features`, `room_members`<br>• Row-Level Security (RLS) for multi-room isolation                                                                      |
+| **User Experience**           | • React + Tailwind UI with persistent bottom music player<br>• Progress bar with seeking support<br>• Sort toolbar (votes / tempo / energy / danceability)<br>• Host-only “Play All” & shuffle queue controls |
+| **Developer Workflow**        | • Modular Express API<br>• Vite + HMR for rapid frontend iteration<br>• Supabase CLI for local Postgres + Realtime<br>• One-command deploy to Render (API) & Vercel (frontend)                               |
 
----
 
 ## 🏗 Tech Stack
 - **Frontend**   React 18, Vite, Tailwind CSS  
-- **Backend**    Node.js, Express, Supabase Postgres (via service role)  
-- **Realtime**   Supabase Realtime over Postgres `replication`  
+- **Backend**    Node.js, Express, Supabase Postgres 
+- **Realtime**   Supabase Realtime over Postgres replication  
 - **Music APIs** Spotify Web API & Playback SDK, MusicBrainz, AcousticBrainz  
 - **Auth**       OAuth 2.0 (PKCE) + signed HTTP-only cookies  
-- **Deployment** Render (API) · Netlify (client) — both free tiers
+- **Deployment** Render (API) · Vercel (client) 
 
 ---
 
