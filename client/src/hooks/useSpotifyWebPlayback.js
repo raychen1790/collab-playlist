@@ -1,7 +1,9 @@
-// client/src/hooks/useSpotifyWebPlayback.js - Fixed Position Updates
+// client/src/hooks/useSpotifyWebPlayback.js - Fixed with environment variable
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 const SPOTIFY_PLAYER_NAME = 'PlaylistVotes Player';
+// Use environment variable instead of hardcoded localhost
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
 
 export function useSpotifyWebPlayback() {
   const [player, setPlayer] = useState(null);
@@ -20,10 +22,12 @@ export function useSpotifyWebPlayback() {
   const lastKnownPositionRef = useRef(0);
   const lastUpdateTimeRef = useRef(Date.now());
 
-  // Fetch access token from backend
+  // Fetch access token from backend - now uses environment variable
   const fetchAccessToken = useCallback(async () => {
+    console.log('🔍 Fetching token from:', `${API_URL}/auth/token`);
+    
     try {
-      const response = await fetch('http://127.0.0.1:4000/auth/token', {
+      const response = await fetch(`${API_URL}/auth/token`, {
         credentials: 'include'
       });
       
@@ -50,6 +54,9 @@ export function useSpotifyWebPlayback() {
     }
   }, []);
 
+  // ... rest of the hook remains the same
+  // (keeping the rest unchanged for brevity, but apply the same pattern everywhere)
+
   // Load Spotify Web Playback SDK script
   const loadSpotifyScript = useCallback(() => {
     return new Promise((resolve, reject) => {
@@ -63,7 +70,6 @@ export function useSpotifyWebPlayback() {
       script.async = true;
 
       script.onload = () => {
-        // Wait for Spotify to be available
         const checkSpotify = () => {
           if (window.Spotify) {
             resolve(window.Spotify);
@@ -93,7 +99,6 @@ export function useSpotifyWebPlayback() {
         try {
           const state = await player.getCurrentState();
           if (state && !state.paused) {
-            // Update our references for interpolation
             lastKnownPositionRef.current = state.position;
             lastUpdateTimeRef.current = Date.now();
             
@@ -103,7 +108,6 @@ export function useSpotifyWebPlayback() {
               position: state.position
             }));
           } else if (state && state.paused) {
-            // If paused, update position but don't continue interpolating
             setPlayerState(prevState => ({
               ...prevState,
               ...state
@@ -113,16 +117,14 @@ export function useSpotifyWebPlayback() {
           console.error('Error updating position:', err);
         }
       }
-    }, 1000); // Update every second
+    }, 1000);
 
-    // Also start a higher frequency interpolation for smooth progress bar
     const smoothUpdateInterval = setInterval(() => {
       if (player && isActive && playerState && !playerState.paused) {
         const now = Date.now();
         const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
         const interpolatedPosition = lastKnownPositionRef.current + timeSinceLastUpdate;
         
-        // Only update if we have a valid duration and position hasn't exceeded it
         if (playerState.duration && interpolatedPosition <= playerState.duration) {
           setPlayerState(prevState => ({
             ...prevState,
@@ -130,9 +132,8 @@ export function useSpotifyWebPlayback() {
           }));
         }
       }
-    }, 100); // Update every 100ms for smooth progress bar
+    }, 100);
 
-    // Store both intervals for cleanup
     positionUpdateIntervalRef.current = {
       main: positionUpdateIntervalRef.current,
       smooth: smoothUpdateInterval
@@ -151,7 +152,6 @@ export function useSpotifyWebPlayback() {
     }
   }, []);
 
-  // Check if our device is the active device - make it independent
   const checkActiveDevice = useCallback(async (token = accessToken, deviceIdToCheck = deviceId) => {
     if (!token || !deviceIdToCheck) return false;
 
@@ -167,7 +167,6 @@ export function useSpotifyWebPlayback() {
         const isOurDeviceActive = data.device?.id === deviceIdToCheck;
         setIsActive(isOurDeviceActive);
         
-        // Start/stop position updates based on active state
         if (isOurDeviceActive && data.is_playing) {
           startPositionUpdates();
         } else {
@@ -176,7 +175,6 @@ export function useSpotifyWebPlayback() {
         
         return isOurDeviceActive;
       } else if (response.status === 204) {
-        // No active device
         setIsActive(false);
         stopPositionUpdates();
         return false;
@@ -190,7 +188,6 @@ export function useSpotifyWebPlayback() {
     return false;
   }, [startPositionUpdates, stopPositionUpdates]);
 
-  // Initialize Spotify Player - remove dependencies that cause loops
   const initializePlayer = useCallback(async (token) => {
     try {
       const spotify = await loadSpotifyScript();
@@ -200,10 +197,9 @@ export function useSpotifyWebPlayback() {
         getOAuthToken: (cb) => {
           cb(token);
         },
-        volume: 0.5 // Use fixed volume instead of state
+        volume: 0.5
       });
 
-      // Error handling
       spotifyPlayer.addListener('initialization_error', ({ message }) => {
         console.error('❌ Failed to initialize:', message);
         setError(`Initialization error: ${message}`);
@@ -228,18 +224,15 @@ export function useSpotifyWebPlayback() {
         setError(`Playback error: ${message}`);
       });
 
-      // Playback status updates
       spotifyPlayer.addListener('player_state_changed', (state) => {
         console.log('Player state changed:', state);
         setPlayerState(state);
         
-        // Update our position tracking references
         if (state) {
           lastKnownPositionRef.current = state.position;
           lastUpdateTimeRef.current = Date.now();
         }
         
-        // Start/stop position updates based on playback state
         if (state && !state.paused && isActive) {
           startPositionUpdates();
         } else {
@@ -247,7 +240,6 @@ export function useSpotifyWebPlayback() {
         }
       });
 
-      // Ready
       spotifyPlayer.addListener('ready', ({ device_id }) => {
         console.log('Ready with Device ID', device_id);
         setDeviceId(device_id);
@@ -255,13 +247,11 @@ export function useSpotifyWebPlayback() {
         setError(null);
         retryCountRef.current = 0;
         
-        // Check if we're already the active device
         setTimeout(() => {
           checkActiveDevice(token, device_id);
         }, 1000);
       });
 
-      // Not Ready
       spotifyPlayer.addListener('not_ready', ({ device_id }) => {
         console.log('Device ID has gone offline', device_id);
         setIsReady(false);
@@ -269,7 +259,6 @@ export function useSpotifyWebPlayback() {
         stopPositionUpdates();
       });
 
-      // Connect to the player!
       const success = await spotifyPlayer.connect();
       
       if (success) {
@@ -284,7 +273,6 @@ export function useSpotifyWebPlayback() {
       console.error('Error initializing Spotify player:', err);
       setError(err.message);
       
-      // Retry logic
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++;
         console.log(`Retrying initialization (${retryCountRef.current}/${maxRetries})...`);
@@ -293,7 +281,6 @@ export function useSpotifyWebPlayback() {
     }
   }, [loadSpotifyScript, startPositionUpdates, stopPositionUpdates]);
 
-  // Initialize on mount - ONLY run once
   useEffect(() => {
     let mounted = true;
 
@@ -313,20 +300,18 @@ export function useSpotifyWebPlayback() {
         playerRef.current.disconnect();
       }
     };
-  }, []); // Empty dependency array to run only once
+  }, []);
 
-  // Periodically check if we're still the active device - only when ready
   useEffect(() => {
     if (!isReady || !deviceId || !accessToken) return;
 
     const interval = setInterval(() => {
       checkActiveDevice(accessToken, deviceId);
-    }, 10000); // Check every 10 seconds (less frequent)
+    }, 10000);
     
     return () => clearInterval(interval);
-  }, [isReady, deviceId, accessToken]); // Only depend on values, not functions
+  }, [isReady, deviceId, accessToken]);
 
-  // Transfer playback to our device
   const transferPlayback = useCallback(async () => {
     if (!deviceId || !accessToken) {
       console.error('Cannot transfer playback: missing deviceId or accessToken');
@@ -344,21 +329,19 @@ export function useSpotifyWebPlayback() {
         },
         body: JSON.stringify({
           device_ids: [deviceId],
-          play: false, // Don't start playing immediately
+          play: false,
         }),
       });
 
       if (response.ok || response.status === 202) {
         console.log('Transfer playback request successful');
         
-        // Wait a moment and then check if we're active
         setTimeout(async () => {
           const isActive = await checkActiveDevice(accessToken, deviceId);
           if (isActive) {
             console.log('Successfully transferred playback to our device');
           } else {
             console.log('Transfer request sent but device not yet active, checking again...');
-            // Check again after a longer delay
             setTimeout(() => checkActiveDevice(accessToken, deviceId), 2000);
           }
         }, 1000);
@@ -377,14 +360,12 @@ export function useSpotifyWebPlayback() {
     }
   }, [deviceId, accessToken]);
 
-  // Play a specific Spotify URI
   const playTrack = useCallback(async (spotifyUri, positionMs = 0) => {
     if (!player || !deviceId || !accessToken) {
       console.error('Player not ready or missing token/deviceId');
       return false;
     }
 
-    // Ensure we're the active device first
     if (!isActive) {
       console.log('Device not active, attempting to transfer playback...');
       const transferred = await transferPlayback();
@@ -392,7 +373,6 @@ export function useSpotifyWebPlayback() {
         return false;
       }
       
-      // Wait a moment for the transfer to take effect
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
@@ -411,7 +391,6 @@ export function useSpotifyWebPlayback() {
 
       if (response.ok || response.status === 202) {
         console.log('Successfully started playback');
-        // Start position updates
         startPositionUpdates();
         return true;
       } else {
@@ -427,7 +406,6 @@ export function useSpotifyWebPlayback() {
     }
   }, [player, deviceId, accessToken, isActive, transferPlayback, startPositionUpdates]);
 
-  // Player controls
   const togglePlay = useCallback(async () => {
     if (player) {
       await player.togglePlay();
@@ -449,7 +427,6 @@ export function useSpotifyWebPlayback() {
   const seek = useCallback(async (positionMs) => {
     if (player) {
       await player.seek(positionMs);
-      // Update the position immediately for better UX
       lastKnownPositionRef.current = positionMs;
       lastUpdateTimeRef.current = Date.now();
       setPlayerState(prevState => ({
@@ -466,7 +443,6 @@ export function useSpotifyWebPlayback() {
     }
   }, [player]);
 
-  // Get current playback state
   const getCurrentState = useCallback(async () => {
     if (player) {
       return await player.getCurrentState();
@@ -474,7 +450,6 @@ export function useSpotifyWebPlayback() {
     return null;
   }, [player]);
 
-  // Cleanup position updates on unmount
   useEffect(() => {
     return () => {
       stopPositionUpdates();
@@ -482,7 +457,6 @@ export function useSpotifyWebPlayback() {
   }, [stopPositionUpdates]);
 
   return {
-    // State
     player,
     deviceId,
     isReady,
@@ -492,7 +466,6 @@ export function useSpotifyWebPlayback() {
     error,
     accessToken,
     
-    // Actions
     playTrack,
     togglePlay,
     nextTrack,
@@ -502,7 +475,6 @@ export function useSpotifyWebPlayback() {
     getCurrentState,
     transferPlayback,
     
-    // Utils
     isPlaying: playerState && !playerState.paused,
     currentTrack: playerState?.track_window?.current_track,
     position: playerState?.position || 0,
