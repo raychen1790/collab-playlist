@@ -1,4 +1,4 @@
-// client/src/pages/Home.jsx - Updated to handle loading state
+// client/src/pages/Home.jsx - Fixed with proper auth handling
 import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
@@ -102,6 +102,7 @@ function LoginScreen() {
 /* ----------  authenticated view ---------- */
 function AuthedHome() {
   const nav = useNavigate();
+  const { user } = useContext(AuthContext);
   const [roomName, setRoomName] = useState('');
   const [playlistInput, setPlaylistInput] = useState('');
   const [creating, setCreating] = useState(false);
@@ -118,20 +119,46 @@ function AuthedHome() {
     if (!roomName || !playlistId) return alert('Both fields required');
 
     setCreating(true);
-    const res = await fetch(`${API_URL}/api/rooms`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: roomName, spotifyPlaylistId: playlistId }),
-    });
-    setCreating(false);
+    
+    try {
+      console.log('🔍 Creating room with:', { roomName, playlistId });
+      console.log('🔍 User context:', user);
+      
+      const res = await fetch(`${API_URL}/api/rooms`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          name: roomName, 
+          spotifyPlaylistId: playlistId 
+        }),
+      });
 
-    if (res.ok) {
-      const { room } = await res.json();
-      nav(`/rooms/${room.id}`);
-    } else {
-      const { error } = await res.json();
-      alert(error);
+      console.log('🔍 Create room response status:', res.status);
+      
+      if (res.ok) {
+        const { room } = await res.json();
+        console.log('✅ Room created successfully:', room);
+        nav(`/rooms/${room.id}`);
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ Create room error:', res.status, errorData);
+        
+        if (res.status === 401) {
+          alert('Authentication expired. Please log in again.');
+          // Force refresh of auth state
+          window.location.reload();
+        } else {
+          alert(errorData.error || `Error: ${res.status}`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Network error creating room:', error);
+      alert('Network error. Please check your connection and try again.');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -153,7 +180,14 @@ function AuthedHome() {
           <h1 className="text-4xl font-fun font-bold text-white mb-4 drop-shadow-lg">
             Welcome back!
           </h1>
-          <p className="text-white/90 text-lg font-medium">Create a new room or join an existing one</p>
+          <p className="text-white/90 text-lg font-medium">
+            Create a new room or join an existing one
+          </p>
+          {user && (
+            <p className="text-white/70 text-sm font-medium mt-2">
+              Logged in as {user.display_name}
+            </p>
+          )}
         </div>
 
         {/* Create Room */}
@@ -202,7 +236,7 @@ function AuthedHome() {
             >
               {creating ? (
                 <>
-                  <div className="loading-spinner w-5 h-5 mr-3"></div>
+                  <Loader2 size={20} className="mr-3 animate-spin" />
                   Creating...
                 </>
               ) : (
@@ -257,6 +291,14 @@ function AuthedHome() {
             </button>
           </form>
         </div>
+
+        {/* Debug info (remove in production) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="glass-card p-4 text-xs">
+            <p className="text-gray-600">Debug - API: {API_URL}</p>
+            <p className="text-gray-600">User: {user ? user.display_name : 'null'}</p>
+          </div>
+        )}
       </div>
     </div>
   );
