@@ -1,5 +1,5 @@
-// client/src/contexts/AuthContext.jsx - FIXED VERSION with persistent storage and better error handling
-import { createContext, useState, useEffect, useCallback } from 'react';
+// client/src/contexts/AuthContext.jsx - Enhanced with token management
+import { createContext, useState, useEffect } from 'react';
 
 export const AuthContext = createContext();
 
@@ -11,55 +11,13 @@ export function AuthProvider({ children }) {
   // Use environment variable for API URL, fallback to local dev
   const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
   
+  // Debug logging
   console.log('🔍 API_URL:', API_URL);
-
-  // FIXED: Token storage helpers that work in Claude.ai environment
-  const storeToken = useCallback((token, user) => {
-    // Store in memory state
-    setAccessToken(token);
-    setUser(user);
-    
-    // Also store in a way that persists during the session
-    if (token && user) {
-      // Create a custom event to notify other components
-      window.dispatchEvent(new CustomEvent('authStateChanged', {
-        detail: { token, user, timestamp: Date.now() }
-      }));
-    }
-  }, []);
-
-  const clearAuth = useCallback(() => {
-    setAccessToken(null);
-    setUser(null);
-    // Notify other components
-    window.dispatchEvent(new CustomEvent('authStateChanged', {
-      detail: { token: null, user: null, timestamp: Date.now() }
-    }));
-  }, []);
-
-  // FIXED: Better error handling and retry logic
-  const handleAuthError = useCallback((error, context) => {
-    console.error(`🚨 Auth error in ${context}:`, error);
-    
-    // Only clear auth state for certain error types
-    if (error.message?.includes('401') || 
-        error.message?.includes('unauthorized') ||
-        error.message?.includes('reauth_required')) {
-      console.log('🗑️ Clearing auth state due to unauthorized error');
-      clearAuth();
-      
-      // Redirect to login if we're not already there
-      if (!window.location.pathname.includes('/login') && !window.location.search.includes('auth_tokens')) {
-        console.log('🔄 Redirecting to re-authenticate');
-        window.location.href = `${API_URL}/auth/login`;
-      }
-    }
-  }, [API_URL, clearAuth]);
 
   useEffect(() => {
     console.log('🔍 AuthContext initializing...');
     handleAuth();
-  }, []);
+  }, [API_URL]);
 
   const handleAuth = async () => {
     try {
@@ -83,7 +41,8 @@ export function AuthProvider({ children }) {
       const error = urlParams.get('error');
       if (error) {
         console.error('🔍 Auth error in URL:', error);
-        clearAuth();
+        setUser(null);
+        setAccessToken(null);
         setLoading(false);
         return;
       }
@@ -93,7 +52,9 @@ export function AuthProvider({ children }) {
       await checkExistingSession();
       
     } catch (err) {
-      handleAuthError(err, 'handleAuth');
+      console.error('🔍 Auth initialization error:', err);
+      setUser(null);
+      setAccessToken(null);
     } finally {
       setLoading(false);
     }
@@ -108,49 +69,42 @@ export function AuthProvider({ children }) {
         expiresIn: tokenData.expires_in
       });
 
-      // Check if tokens are expired
+      // Verify tokens are not expired
       if (tokenData.expires_at && Date.now() > tokenData.expires_at) {
         console.log('🔍 Tokens expired, falling back to regular auth');
         await checkExistingSession();
         return;
       }
 
-      // FIXED: Store tokens immediately for Web Playback SDK
-      storeToken(tokenData.access_token, null);
+      // Store tokens in memory for immediate use
+      setAccessToken(tokenData.access_token);
 
-      // Store tokens on backend with better error handling
-      try {
-        const storeResponse = await fetch(`${API_URL}/auth/store-tokens`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${tokenData.access_token}` // FIXED: Include token in header
-          },
-          body: JSON.stringify({
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
-            expires_in: tokenData.expires_in
-          })
-        });
+      // Also store tokens on backend via API call for cookie fallback
+      const storeResponse = await fetch(`${API_URL}/auth/store-tokens`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          expires_in: tokenData.expires_in
+        })
+      });
 
-        if (storeResponse.ok) {
-          const data = await storeResponse.json();
-          console.log('🔍 Tokens stored successfully:', data.user?.display_name);
-          storeToken(tokenData.access_token, data.user);
-        } else {
-          const errorData = await storeResponse.json();
-          console.error('🔍 Failed to store tokens:', storeResponse.status, errorData);
-          // Still try to verify the token directly
-          await verifyToken(tokenData.access_token);
-        }
-      } catch (storeError) {
-        console.error('🔍 Store tokens request failed:', storeError);
-        // Fallback to direct token verification
+      if (storeResponse.ok) {
+        const data = await storeResponse.json();
+        console.log('🔍 Tokens stored successfully:', data.user?.display_name);
+        setUser(data.user);
+      } else {
+        console.error('🔍 Failed to store tokens:', storeResponse.status);
+        // Even if storing fails, we can still use the token temporarily
         await verifyToken(tokenData.access_token);
       }
     } catch (err) {
       console.error('🔍 Error handling URL tokens:', err);
+      // Fallback to regular session check
       await checkExistingSession();
     }
   };
@@ -163,7 +117,8 @@ export function AuthProvider({ children }) {
       
       if (response.ok) {
         const userData = await response.json();
-        storeToken(token, userData);
+        setUser(userData);
+        setAccessToken(token);
         return true;
       }
       return false;
@@ -173,197 +128,110 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // FIXED: Better session checking with retry logic and token extraction
-  const checkExistingSession = async (retryCount = 0) => {
+  const checkExistingSession = async () => {
     try {
-      console.log(`🔍 Fetching from: ${API_URL}/auth/me (attempt ${retryCount + 1})`);
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      console.log('🔍 Fetching from:', `${API_URL}/auth/me`);
       
       const response = await fetch(`${API_URL}/auth/me`, {
-        credentials: 'include',
-        signal: controller.signal
+        credentials: 'include'
       });
       
-      clearTimeout(timeoutId);
-      
       console.log('🔍 Response status:', response.status);
+      const data = await response.json();
+      console.log('🔍 Response data:', data);
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('🔍 Response data:', data);
-        
-        if (data.user) {
-          // FIXED: Also get a fresh token for API calls immediately
-          const token = await getStoredToken();
-          storeToken(token, data.user);
-        } else {
-          clearAuth();
-        }
-      } else if (response.status === 401) {
-        console.log('🔍 401 response - user not authenticated');
-        clearAuth();
+      if (data.user) {
+        setUser(data.user);
+        // Try to get a fresh token for API calls
+        await getStoredToken();
       } else {
-        throw new Error(`HTTP ${response.status}`);
+        setUser(null);
+        setAccessToken(null);
       }
     } catch (err) {
-      console.error('🔍 Session check error:', err);
-      
-      // Retry logic for network errors
-      if (retryCount < 2 && (err.name === 'AbortError' || err.message.includes('fetch'))) {
-        console.log(`🔄 Retrying session check (${retryCount + 1}/3)...`);
-        setTimeout(() => checkExistingSession(retryCount + 1), 1000 * (retryCount + 1));
-      } else {
-        clearAuth();
-      }
+      console.error('🔍 Fetch error:', err);
+      setUser(null);
+      setAccessToken(null);
     }
   };
 
-  // FIXED: Enhanced token getter that returns the token for Web Playback SDK
   const getStoredToken = async () => {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
       const response = await fetch(`${API_URL}/auth/token`, {
-        credentials: 'include',
-        headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {},
-        signal: controller.signal
+        credentials: 'include'
       });
-      
-      clearTimeout(timeoutId);
       
       if (response.ok) {
         const data = await response.json();
-        if (data.access_token && data.access_token !== accessToken) {
-          console.log('🔄 Got fresh token from server');
-          setAccessToken(data.access_token);
-        }
-        return data.access_token || accessToken;
-      } else {
-        console.error('Failed to get stored token:', response.status);
+        setAccessToken(data.access_token);
+        return data.access_token;
       }
     } catch (err) {
       console.error('Failed to get stored token:', err);
     }
-    return accessToken; // Return current token as fallback
+    return null;
   };
 
-  // FIXED: Enhanced API fetch function with better error handling and retries
-  const apiRequest = useCallback(async (endpoint, options = {}) => {
+  // Enhanced API fetch function that includes token in headers
+  const apiRequest = async (endpoint, options = {}) => {
     const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
     
-    const makeRequest = async (token = null) => {
-      const headers = {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      };
-
-      // FIXED: Always include Authorization header if we have a token
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const config = {
-        ...options,
-        headers,
-        credentials: 'include', // Always include cookies as fallback
-      };
-
-      console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`, {
-        hasToken: !!token,
-        hasCredentials: true,
-      });
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-      try {
-        const response = await fetch(url, {
-          ...config,
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        return response;
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        throw fetchError;
-      }
+    // Prepare headers
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
     };
 
+    // Add token to Authorization header if available
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+
+    const config = {
+      ...options,
+      headers,
+      credentials: 'include', // Still include cookies as fallback
+    };
+
+    console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`, {
+      hasToken: !!accessToken,
+      hasCredentials: true,
+    });
+
     try {
-      // First attempt with current token
-      let response = await makeRequest(accessToken);
+      const response = await fetch(url, config);
       
-      // If we get 401 and we have an access token, try to refresh
-      if (response.status === 401 && accessToken) {
-        console.log('🔄 401 error with existing token, attempting refresh...');
+      // If we get 401 and we have no token, try to refresh
+      if (response.status === 401 && !accessToken && user) {
+        console.log('🔄 401 error, attempting to get fresh token...');
         const freshToken = await getStoredToken();
-        if (freshToken && freshToken !== accessToken) {
+        if (freshToken) {
           // Retry with fresh token
-          response = await makeRequest(freshToken);
-        }
-      }
-      
-      // If still 401, handle auth error
-      if (response.status === 401) {
-        const errorData = await response.json().catch(() => ({}));
-        if (errorData.reauth_required) {
-          console.log('🔄 Re-authentication required, redirecting...');
-          handleAuthError(new Error('reauth_required'), 'apiRequest');
+          config.headers.Authorization = `Bearer ${freshToken}`;
+          return await fetch(url, config);
         }
       }
       
       return response;
     } catch (error) {
       console.error('🚨 API Request failed:', error);
-      
-      // Handle network errors gracefully
-      if (error.name === 'AbortError') {
-        throw new Error('Request timed out');
-      } else if (!navigator.onLine) {
-        throw new Error('No internet connection');
-      } else {
-        throw error;
-      }
+      throw error;
     }
-  }, [API_URL, accessToken, handleAuthError]);
+  };
 
   const logout = async () => {
     try {
       await fetch(`${API_URL}/auth/logout`, {
         method: 'POST',
-        credentials: 'include',
-        headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}
+        credentials: 'include'
       });
     } catch (err) {
       console.error('Logout error:', err);
     } finally {
-      clearAuth();
+      setUser(null);
+      setAccessToken(null);
     }
   };
-
-  // FIXED: Method to get fresh token for Web Playback SDK
-  const getFreshToken = useCallback(async () => {
-    if (accessToken) {
-      // First try to use current token
-      try {
-        const response = await fetch('https://api.spotify.com/v1/me', {
-          headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        if (response.ok) {
-          return accessToken;
-        }
-      } catch (err) {
-        console.log('Current token validation failed, getting fresh token...');
-      }
-    }
-    
-    // Get fresh token from server
-    return await getStoredToken();
-  }, [accessToken]);
 
   const value = {
     user,
@@ -371,14 +239,7 @@ export function AuthProvider({ children }) {
     loading,
     accessToken,
     logout,
-    apiRequest,
-    getFreshToken, // FIXED: Expose for Web Playback SDK
-    // FIXED: Add method to manually trigger re-authentication
-    forceReauth: () => {
-      console.log('🔄 Force re-authentication triggered');
-      clearAuth();
-      window.location.href = `${API_URL}/auth/login`;
-    }
+    apiRequest, // Expose the enhanced API request function
   };
 
   return (
