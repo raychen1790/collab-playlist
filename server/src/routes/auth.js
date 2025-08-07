@@ -1,5 +1,4 @@
-// Updated auth.js with improved cross-site cookie handling
-
+// routes/auth.js - Updated with better cookie handling for cross-site
 import express from 'express';
 import axios from 'axios';
 import querystring from 'querystring';
@@ -23,22 +22,26 @@ const scopes = [
   'user-library-read'
 ].join(' ');
 
-// Helper function for cookie options - CONSISTENT across all endpoints
+// CRITICAL: Updated cookie options with explicit domain and path
 const getCookieOptions = (maxAge = null) => ({
   httpOnly: true,
   signed: true,
   maxAge: maxAge,
   sameSite: isProd ? 'none' : 'lax',
   secure: isProd,
-  // Remove domain setting to let browser handle it
+  // IMPORTANT: Set explicit path to ensure cookies work across subdomains
+  path: '/',
+  // In production, don't set domain - let browser handle it automatically
+  // This is often the culprit in cross-site cookie issues
 });
 
 // Helper function for clearing cookies - CONSISTENT options
 const getClearCookieOptions = () => ({
   httpOnly: true,
-  signed: true, // Important: use signed when clearing signed cookies
+  signed: true,
   sameSite: isProd ? 'none' : 'lax',
   secure: isProd,
+  path: '/', // Important for clearing
 });
 
 // 1. Redirect user to Spotify login
@@ -46,6 +49,7 @@ router.get('/login', (req, res) => {
   console.log('👉 GET /auth/login');
   console.log('    using CLIENT_ID=', process.env.SPOTIFY_CLIENT_ID);
   console.log('    using REDIRECT_URI=', process.env.REDIRECT_URI);
+  console.log('    request origin:', req.headers.origin);
   
   const state = Math.random().toString(36).substring(2, 15);
   
@@ -61,10 +65,11 @@ router.get('/login', (req, res) => {
   // Use SIGNED cookies for state as well - more secure
   res.cookie('spotify_auth_state', state, {
     httpOnly: true,
-    signed: true, // Changed to signed
+    signed: true,
     maxAge: 10 * 60 * 1000,
     sameSite: isProd ? 'none' : 'lax',
-    secure: isProd
+    secure: isProd,
+    path: '/'
   });
   
   console.log('🍪 Set spotify_auth_state cookie (signed)');
@@ -76,7 +81,7 @@ router.get('/login', (req, res) => {
 router.get('/callback', async (req, res) => {
   const code = req.query.code || null;
   const state = req.query.state || null;
-  const storedState = req.signedCookies.spotify_auth_state || null; // Changed to signedCookies
+  const storedState = req.signedCookies.spotify_auth_state || null;
 
   console.log('👉 GET /auth/callback');
   console.log('    code:', !!code);
@@ -84,22 +89,25 @@ router.get('/callback', async (req, res) => {
   console.log('    storedState:', storedState);
   console.log('    all cookies:', Object.keys(req.cookies));
   console.log('    signed cookies:', Object.keys(req.signedCookies));
+  console.log('    request origin:', req.headers.origin);
+  console.log('    user-agent:', req.headers['user-agent']?.substring(0, 100));
 
   // Clear the state cookie with same options used to set it
   res.clearCookie('spotify_auth_state', {
     httpOnly: true,
-    signed: true, // Important: match the signed setting
+    signed: true,
     sameSite: isProd ? 'none' : 'lax',
-    secure: isProd
+    secure: isProd,
+    path: '/'
   });
 
   if (state === null || state !== storedState) {
-    console.error('State mismatch in OAuth callback');
+    console.error('❌ State mismatch in OAuth callback');
     return res.redirect(`${process.env.FRONTEND_URI}?error=state_mismatch`);
   }
 
   if (!code) {
-    console.error('No authorization code received');
+    console.error('❌ No authorization code received');
     return res.redirect(`${process.env.FRONTEND_URI}?error=access_denied`);
   }
 
@@ -137,7 +145,7 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URI}?error=token_verification_failed`);
     }
     
-    // Set cookies with proper options for cross-site
+    // CRITICAL: Set cookies with proper options for cross-site
     const accessTokenCookieOptions = getCookieOptions(expires_in * 1000);
     res.cookie('spotify_token', access_token, accessTokenCookieOptions);
     console.log('🍪 Set spotify_token cookie with options:', accessTokenCookieOptions);
@@ -148,8 +156,12 @@ router.get('/callback', async (req, res) => {
       console.log('🍪 Set refresh_token cookie with options:', refreshTokenCookieOptions);
     }
 
-    console.log('🏠 Redirecting to frontend:', process.env.FRONTEND_URI);
-    res.redirect(process.env.FRONTEND_URI);
+    // IMPORTANT: Add a small delay before redirect to ensure cookies are set
+    setTimeout(() => {
+      console.log('🏠 Redirecting to frontend:', process.env.FRONTEND_URI);
+      res.redirect(process.env.FRONTEND_URI);
+    }, 100);
+
   } catch (err) {
     console.error('❌ Authentication failed:', err.response?.data || err.message);
     res.redirect(`${process.env.FRONTEND_URI}?error=auth_failed`);
@@ -164,8 +176,15 @@ router.get('/me', ensureSpotifyToken, async (req, res) => {
   console.log('    cookies:', Object.keys(req.cookies));
   console.log('    signed cookies:', Object.keys(req.signedCookies));
   console.log('    origin:', req.headers.origin);
+  console.log('    referer:', req.headers.referer);
   console.log('    user-agent:', req.headers['user-agent']?.substring(0, 50) + '...');
   console.log('    cookie header present:', !!req.headers.cookie);
+  console.log('    cookie header length:', req.headers.cookie?.length || 0);
+  
+  // Log the actual cookie header (first 200 chars) for debugging
+  if (req.headers.cookie) {
+    console.log('    cookie header preview:', req.headers.cookie.substring(0, 200) + '...');
+  }
   
   if (!token) {
     console.log('   ↳ no token, returning user: null');
@@ -182,7 +201,6 @@ router.get('/me', ensureSpotifyToken, async (req, res) => {
     console.error('   ↳ error fetching profile:', err.response?.status, err.response?.data?.error?.message || err.message);
     
     if (err.response?.status === 401) {
-      // Use consistent clear options
       const clearOpts = getClearCookieOptions();
       res.clearCookie('spotify_token', clearOpts);
       res.clearCookie('refresh_token', clearOpts);
@@ -253,13 +271,14 @@ router.post('/logout', (req, res) => {
     httpOnly: true,
     signed: true,
     sameSite: isProd ? 'none' : 'lax',
-    secure: isProd
+    secure: isProd,
+    path: '/'
   });
   
   res.json({ success: true });
 });
 
-// Debug endpoint to check cookies
+// Enhanced debug endpoint
 router.get('/debug', (req, res) => {
   console.log('👉 GET /auth/debug');
   res.json({
@@ -269,11 +288,20 @@ router.get('/debug', (req, res) => {
       origin: req.headers.origin,
       referer: req.headers.referer,
       'user-agent': req.headers['user-agent']?.substring(0, 100),
-      cookie: req.headers.cookie ? 'present' : 'missing'
+      cookie: req.headers.cookie ? `present (${req.headers.cookie.length} chars)` : 'missing',
+      cookiePreview: req.headers.cookie?.substring(0, 200)
     },
     env: {
       NODE_ENV: process.env.NODE_ENV,
-      FRONTEND_URI: process.env.FRONTEND_URI
+      FRONTEND_URI: process.env.FRONTEND_URI,
+      isProd: isProd
+    },
+    cookieSettings: {
+      sameSite: isProd ? 'none' : 'lax',
+      secure: isProd,
+      httpOnly: true,
+      signed: true,
+      path: '/'
     }
   });
 });
