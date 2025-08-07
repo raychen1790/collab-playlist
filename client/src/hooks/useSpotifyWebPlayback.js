@@ -1,9 +1,8 @@
-// client/src/hooks/useSpotifyWebPlayback.js - Fixed with environment variable
-import { useState, useEffect, useCallback, useRef } from 'react';
+// client/src/hooks/useSpotifyWebPlayback.js - Fixed to use AuthContext
+import { useState, useEffect, useCallback, useRef, useContext } from 'react';
+import { AuthContext } from '../contexts/AuthContext.jsx';
 
 const SPOTIFY_PLAYER_NAME = 'PlaylistVotes Player';
-// Use environment variable instead of hardcoded localhost
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
 
 export function useSpotifyWebPlayback() {
   const [player, setPlayer] = useState(null);
@@ -22,18 +21,20 @@ export function useSpotifyWebPlayback() {
   const lastKnownPositionRef = useRef(0);
   const lastUpdateTimeRef = useRef(Date.now());
 
-  // Fetch access token from backend - now uses environment variable
+  // Use AuthContext for enhanced API requests
+  const { apiRequest, accessToken: contextAccessToken } = useContext(AuthContext);
+
+  // Fetch access token from backend using AuthContext
   const fetchAccessToken = useCallback(async () => {
-    console.log('🔍 Fetching token from:', `${API_URL}/auth/token`);
+    console.log('🔍 Fetching token via AuthContext');
     
     try {
-      const response = await fetch(`${API_URL}/auth/token`, {
-        credentials: 'include'
-      });
+      // Use AuthContext's enhanced apiRequest
+      const response = await apiRequest('/auth/token');
       
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Successfully fetched access token');
+        console.log('✅ Successfully fetched access token via AuthContext');
         setAccessToken(data.access_token);
         return data.access_token;
       } else {
@@ -52,10 +53,15 @@ export function useSpotifyWebPlayback() {
       setError('Failed to get Spotify access token - please try logging in again');
       return null;
     }
-  }, []);
+  }, [apiRequest]);
 
-  // ... rest of the hook remains the same
-  // (keeping the rest unchanged for brevity, but apply the same pattern everywhere)
+  // Also try to use token from AuthContext if available
+  useEffect(() => {
+    if (contextAccessToken && !accessToken) {
+      console.log('🔍 Using token from AuthContext');
+      setAccessToken(contextAccessToken);
+    }
+  }, [contextAccessToken, accessToken]);
 
   // Load Spotify Web Playback SDK script
   const loadSpotifyScript = useCallback(() => {
@@ -285,7 +291,13 @@ export function useSpotifyWebPlayback() {
     let mounted = true;
 
     const init = async () => {
-      const token = await fetchAccessToken();
+      // Try to get token from context first, then fallback to API call
+      let token = contextAccessToken;
+      
+      if (!token) {
+        token = await fetchAccessToken();
+      }
+      
       if (token && mounted) {
         await initializePlayer(token);
       }
@@ -300,7 +312,7 @@ export function useSpotifyWebPlayback() {
         playerRef.current.disconnect();
       }
     };
-  }, []);
+  }, [contextAccessToken]); // React to changes in context token
 
   useEffect(() => {
     if (!isReady || !deviceId || !accessToken) return;

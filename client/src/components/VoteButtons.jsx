@@ -1,14 +1,15 @@
-// client/src/components/VoteButtons.jsx - Fixed with environment variable
-import { useState, useEffect } from 'react';
+// client/src/components/VoteButtons.jsx - Fixed to use AuthContext apiRequest
+import { useState, useEffect, useContext } from 'react';
 import { ThumbsUp, ThumbsDown, Minus } from 'lucide-react';
-
-// Get API URL from environment variable
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
+import { AuthContext } from '../contexts/AuthContext.jsx';
 
 export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
   const [pending, setPending] = useState(false);
   const [localScore, setLocalScore] = useState(score);
   const [lastVote, setLastVote] = useState(null); // Track user's last vote for visual feedback
+  
+  // Use AuthContext for enhanced API requests
+  const { apiRequest } = useContext(AuthContext);
 
   // Update local score when prop changes (from real-time updates)
   useEffect(() => {
@@ -21,17 +22,13 @@ export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
     setLastVote(value);
 
     try {
-      console.log('🗳️ Submitting vote to:', `${API_URL}/api/rooms/${roomId}/tracks/${trackId}/vote`);
+      console.log('🗳️ Submitting vote via AuthContext to:', `/api/rooms/${roomId}/tracks/${trackId}/vote`);
       
-      const res = await fetch(
-        `${API_URL}/api/rooms/${roomId}/tracks/${trackId}/vote`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vote: value }),
-        }
-      );
+      // Use AuthContext's apiRequest instead of direct fetch
+      const res = await apiRequest(`/api/rooms/${roomId}/tracks/${trackId}/vote`, {
+        method: 'POST',
+        body: JSON.stringify({ vote: value }),
+      });
 
       if (res.ok) {
         const json = await res.json();
