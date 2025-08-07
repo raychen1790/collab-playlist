@@ -388,6 +388,9 @@ export function useSpotifyWebPlayback() {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
+    // Add rate limiting protection
+    await new Promise(resolve => setTimeout(resolve, 200));
+
     try {
       const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
         method: 'PUT',

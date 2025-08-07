@@ -1,5 +1,5 @@
-// client/src/hooks/useMusicPlayer.js - Fixed Shuffle Implementation
-import { useState, useCallback, useMemo, useEffect } from 'react';
+// client/src/hooks/useMusicPlayer.js - Fixed to prevent rate limiting
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSpotifyWebPlayback } from './useSpotifyWebPlayback.js';
 
 export function useMusicPlayer(tracks, sortMode) {
@@ -7,6 +7,11 @@ export function useMusicPlayer(tracks, sortMode) {
   const [shuffleMode, setShuffleMode] = useState(false);
   const [playQueue, setPlayQueue] = useState([]);
   const [originalQueue, setOriginalQueue] = useState([]);
+  
+  // Add refs to prevent excessive API calls
+  const lastTrackEndTime = useRef(0);
+  const isChangingTracks = useRef(false);
+  const trackEndDetectionRef = useRef(null);
 
   // Use Spotify Web Playback SDK
   const {
@@ -33,7 +38,10 @@ export function useMusicPlayer(tracks, sortMode) {
     spotifyCurrentTrack: spotifyCurrentTrack?.name,
     isPlaying,
     shuffleMode,
-    currentTrackInQueue: playQueue[currentQueueIndex]
+    currentTrackInQueue: playQueue[currentQueueIndex],
+    position: playerState?.position,
+    duration: playerState?.duration,
+    isChangingTracks: isChangingTracks.current
   });
 
   // All tracks with Spotify IDs are playable
@@ -166,51 +174,65 @@ export function useMusicPlayer(tracks, sortMode) {
     return finalQueue;
   }, [playableTracks, sortMode]);
 
-  // Play function
+  // Play function with rate limiting protection
   const play = useCallback(async (trackIndex = null) => {
-    if (playableTracks.length === 0 || !spotifyReady) {
-      console.log('❌ Cannot play: no tracks or Spotify not ready');
+    if (playableTracks.length === 0 || !spotifyReady || isChangingTracks.current) {
+      console.log('❌ Cannot play: no tracks, Spotify not ready, or already changing tracks');
       return false;
     }
 
-    // If no specific track index provided and we have a current track, just resume
-    if (trackIndex === null && currentTrack && !isPlaying) {
-      console.log('▶️ Resuming current track');
-      await toggleSpotifyPlay();
-      return true;
-    }
-  
-    // If no track index provided, use current queue position
-    let targetTrackIndex = trackIndex !== null ? trackIndex : playQueue[currentQueueIndex];
-    const targetTrack = playableTracks[targetTrackIndex];
-    
-    if (!targetTrack) {
-      console.log('❌ Cannot play: no target track at index', targetTrackIndex);
-      return false;
-    }
+    // Set flag to prevent multiple simultaneous calls
+    isChangingTracks.current = true;
 
-    console.log('▶️ Playing track:', targetTrack.title, 'at track index', targetTrackIndex);
-
-    // Play via Spotify Web Playback SDK
-    const spotifyUri = `spotify:track:${targetTrack.spotifyId}`;
-    const success = await playSpotifyTrack(spotifyUri);
+    try {
+      // If no specific track index provided and we have a current track, just resume
+      if (trackIndex === null && currentTrack && !isPlaying) {
+        console.log('▶️ Resuming current track');
+        await toggleSpotifyPlay();
+        return true;
+      }
     
-    console.log('🎵 Playback result:', success ? 'SUCCESS' : 'FAILED');
-    return success;
+      // If no track index provided, use current queue position
+      let targetTrackIndex = trackIndex !== null ? trackIndex : playQueue[currentQueueIndex];
+      const targetTrack = playableTracks[targetTrackIndex];
+      
+      if (!targetTrack) {
+        console.log('❌ Cannot play: no target track at index', targetTrackIndex);
+        return false;
+      }
+
+      console.log('▶️ Playing track:', targetTrack.title, 'at track index', targetTrackIndex);
+
+      // Add delay to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Play via Spotify Web Playback SDK
+      const spotifyUri = `spotify:track:${targetTrack.spotifyId}`;
+      const success = await playSpotifyTrack(spotifyUri);
+      
+      console.log('🎵 Playback result:', success ? 'SUCCESS' : 'FAILED');
+      return success;
+      
+    } finally {
+      // Always clear the flag
+      setTimeout(() => {
+        isChangingTracks.current = false;
+      }, 500);
+    }
   }, [playableTracks, spotifyReady, currentQueueIndex, playQueue, playSpotifyTrack, currentTrack, isPlaying, toggleSpotifyPlay]);
 
   // Pause function
   const pause = useCallback(async () => {
-    if (spotifyReady) {
+    if (spotifyReady && !isChangingTracks.current) {
       console.log('⏸️ Pausing playback');
       await toggleSpotifyPlay();
     }
   }, [spotifyReady, toggleSpotifyPlay]);
 
-  // Fixed next function - maintains current queue
+  // Fixed next function with rate limiting protection
   const next = useCallback(async () => {
-    if (playableTracks.length === 0 || playQueue.length === 0) {
-      console.log('❌ Cannot go to next: no tracks or empty queue');
+    if (playableTracks.length === 0 || playQueue.length === 0 || isChangingTracks.current) {
+      console.log('❌ Cannot go to next: no tracks, empty queue, or already changing');
       return;
     }
 
@@ -234,8 +256,8 @@ export function useMusicPlayer(tracks, sortMode) {
 
   // Fixed previous function
   const previous = useCallback(async () => {
-    if (playableTracks.length === 0 || playQueue.length === 0) {
-      console.log('❌ Cannot go to previous: no tracks or empty queue');
+    if (playableTracks.length === 0 || playQueue.length === 0 || isChangingTracks.current) {
+      console.log('❌ Cannot go to previous: no tracks, empty queue, or already changing');
       return;
     }
 
@@ -378,12 +400,53 @@ export function useMusicPlayer(tracks, sortMode) {
     }
   }, [playableTracks.length]); // Only re-run if the number of tracks changes
 
-  // Handle automatic track advancement
+  // FIXED: Better track end detection with debouncing
   useEffect(() => {
-    if (playerState && playerState.position === 0 && playerState.duration > 0 && !isPlaying) {
-      console.log('🔄 Track ended, playing next');
-      next();
+    // Clear previous timeout
+    if (trackEndDetectionRef.current) {
+      clearTimeout(trackEndDetectionRef.current);
     }
+
+    // Only detect track end if we have valid player state
+    if (!playerState || !playerState.duration || playerState.duration === 0) {
+      return;
+    }
+
+    const position = playerState.position || 0;
+    const duration = playerState.duration;
+    const remainingTime = duration - position;
+    
+    // Only advance if:
+    // 1. Track is very close to the end (within 2 seconds)
+    // 2. Track is not currently playing (ended)
+    // 3. We haven't advanced recently (prevent double-triggering)
+    const isNearEnd = remainingTime < 2000; // 2 seconds from end
+    const trackEnded = !isPlaying && position > 0 && duration > 30000; // Only for tracks longer than 30s
+    const shouldAdvance = (isNearEnd && !isPlaying) || trackEnded;
+    const timeSinceLastEnd = Date.now() - lastTrackEndTime.current;
+    
+    if (shouldAdvance && timeSinceLastEnd > 1000) { // 5 second cooldown
+      console.log('🔄 Track end detected:', {
+        position,
+        duration,
+        remainingTime,
+        isPlaying,
+        timeSinceLastEnd
+      });
+      
+      // Debounce the track change
+      trackEndDetectionRef.current = setTimeout(() => {
+        lastTrackEndTime.current = Date.now();
+        next();
+      }, 1000); // 1 second delay
+    }
+
+    // Cleanup
+    return () => {
+      if (trackEndDetectionRef.current) {
+        clearTimeout(trackEndDetectionRef.current);
+      }
+    };
   }, [playerState?.position, playerState?.duration, isPlaying, next]);
 
   return {
