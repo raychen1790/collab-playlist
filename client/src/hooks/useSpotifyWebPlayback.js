@@ -1,4 +1,4 @@
-// client/src/hooks/useSpotifyWebPlayback.js - Fixed to use AuthContext
+// client/src/hooks/useSpotifyWebPlayback.js - FIXED VERSION
 import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 
@@ -17,9 +17,12 @@ export function useSpotifyWebPlayback() {
   const playerRef = useRef(null);
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+  
+  // FIXED: Real-time position tracking
   const positionUpdateIntervalRef = useRef(null);
-  const lastKnownPositionRef = useRef(0);
+  const lastPositionRef = useRef(0);
   const lastUpdateTimeRef = useRef(Date.now());
+  const isPlayingRef = useRef(false);
 
   // Use AuthContext for enhanced API requests
   const { apiRequest, accessToken: contextAccessToken } = useContext(AuthContext);
@@ -29,7 +32,6 @@ export function useSpotifyWebPlayback() {
     console.log('🔍 Fetching token via AuthContext');
     
     try {
-      // Use AuthContext's enhanced apiRequest
       const response = await apiRequest('/auth/token');
       
       if (response.ok) {
@@ -94,18 +96,18 @@ export function useSpotifyWebPlayback() {
     });
   }, []);
 
-  // Update player position with interpolation for smooth progress bar
+  // FIXED: Real-time position updates with proper interpolation
   const startPositionUpdates = useCallback(() => {
     if (positionUpdateIntervalRef.current) {
       clearInterval(positionUpdateIntervalRef.current);
     }
 
-    positionUpdateIntervalRef.current = setInterval(async () => {
-      if (player && isActive) {
-        try {
-          const state = await player.getCurrentState();
+    positionUpdateIntervalRef.current = setInterval(() => {
+      if (player && isActive && isPlayingRef.current) {
+        // Get actual state from Spotify every 5 seconds for accuracy
+        player.getCurrentState().then(state => {
           if (state && !state.paused) {
-            lastKnownPositionRef.current = state.position;
+            lastPositionRef.current = state.position;
             lastUpdateTimeRef.current = Date.now();
             
             setPlayerState(prevState => ({
@@ -113,38 +115,41 @@ export function useSpotifyWebPlayback() {
               ...state,
               position: state.position
             }));
-          } else if (state && state.paused) {
-            setPlayerState(prevState => ({
-              ...prevState,
-              ...state
-            }));
           }
-        } catch (err) {
-          console.error('Error updating position:', err);
-        }
+        }).catch(err => {
+          console.error('Error getting current state:', err);
+        });
       }
-    }, 1000);
+    }, 5000); // Update from Spotify every 5 seconds
 
-    const smoothUpdateInterval = setInterval(() => {
-      if (player && isActive && playerState && !playerState.paused) {
+    // Smooth interpolation every 250ms
+    const smoothInterval = setInterval(() => {
+      if (isPlayingRef.current && playerState?.duration) {
         const now = Date.now();
-        const timeSinceLastUpdate = now - lastUpdateTimeRef.current;
-        const interpolatedPosition = lastKnownPositionRef.current + timeSinceLastUpdate;
+        const timeSinceUpdate = now - lastUpdateTimeRef.current;
+        const interpolatedPosition = Math.min(
+          lastPositionRef.current + timeSinceUpdate,
+          playerState.duration
+        );
         
-        if (playerState.duration && interpolatedPosition <= playerState.duration) {
-          setPlayerState(prevState => ({
-            ...prevState,
-            position: interpolatedPosition
-          }));
-        }
+        setPlayerState(prevState => {
+          if (prevState) {
+            return {
+              ...prevState,
+              position: interpolatedPosition
+            };
+          }
+          return prevState;
+        });
       }
-    }, 100);
+    }, 250);
 
+    // Store both intervals for cleanup
     positionUpdateIntervalRef.current = {
       main: positionUpdateIntervalRef.current,
-      smooth: smoothUpdateInterval
+      smooth: smoothInterval
     };
-  }, [player, isActive, playerState]);
+  }, [player, isActive, playerState?.duration]);
 
   const stopPositionUpdates = useCallback(() => {
     if (positionUpdateIntervalRef.current) {
@@ -174,14 +179,17 @@ export function useSpotifyWebPlayback() {
         setIsActive(isOurDeviceActive);
         
         if (isOurDeviceActive && data.is_playing) {
+          isPlayingRef.current = true;
           startPositionUpdates();
         } else {
+          isPlayingRef.current = false;
           stopPositionUpdates();
         }
         
         return isOurDeviceActive;
       } else if (response.status === 204) {
         setIsActive(false);
+        isPlayingRef.current = false;
         stopPositionUpdates();
         return false;
       } else {
@@ -230,18 +238,31 @@ export function useSpotifyWebPlayback() {
         setError(`Playback error: ${message}`);
       });
 
+      // FIXED: Better state change handling
       spotifyPlayer.addListener('player_state_changed', (state) => {
-        console.log('Player state changed:', state);
-        setPlayerState(state);
+        console.log('🎵 Player state changed:', state);
         
         if (state) {
-          lastKnownPositionRef.current = state.position;
+          const wasPlaying = isPlayingRef.current;
+          const isNowPlaying = !state.paused;
+          
+          isPlayingRef.current = isNowPlaying;
+          lastPositionRef.current = state.position;
           lastUpdateTimeRef.current = Date.now();
-        }
-        
-        if (state && !state.paused && isActive) {
-          startPositionUpdates();
+          
+          setPlayerState(state);
+          
+          // Start/stop position tracking based on play state
+          if (isNowPlaying && !wasPlaying) {
+            console.log('▶️ Starting position updates');
+            startPositionUpdates();
+          } else if (!isNowPlaying && wasPlaying) {
+            console.log('⏸️ Stopping position updates');
+            stopPositionUpdates();
+          }
         } else {
+          isPlayingRef.current = false;
+          setPlayerState(null);
           stopPositionUpdates();
         }
       });
@@ -262,6 +283,7 @@ export function useSpotifyWebPlayback() {
         console.log('Device ID has gone offline', device_id);
         setIsReady(false);
         setIsActive(false);
+        isPlayingRef.current = false;
         stopPositionUpdates();
       });
 
@@ -285,13 +307,12 @@ export function useSpotifyWebPlayback() {
         setTimeout(() => initializePlayer(token), 2000);
       }
     }
-  }, [loadSpotifyScript, startPositionUpdates, stopPositionUpdates]);
+  }, [loadSpotifyScript, startPositionUpdates, stopPositionUpdates, checkActiveDevice]);
 
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
-      // Try to get token from context first, then fallback to API call
       let token = contextAccessToken;
       
       if (!token) {
@@ -312,7 +333,7 @@ export function useSpotifyWebPlayback() {
         playerRef.current.disconnect();
       }
     };
-  }, [contextAccessToken]); // React to changes in context token
+  }, [contextAccessToken, fetchAccessToken, initializePlayer, stopPositionUpdates]);
 
   useEffect(() => {
     if (!isReady || !deviceId || !accessToken) return;
@@ -322,7 +343,7 @@ export function useSpotifyWebPlayback() {
     }, 10000);
     
     return () => clearInterval(interval);
-  }, [isReady, deviceId, accessToken]);
+  }, [isReady, deviceId, accessToken, checkActiveDevice]);
 
   const transferPlayback = useCallback(async () => {
     if (!deviceId || !accessToken) {
@@ -370,8 +391,9 @@ export function useSpotifyWebPlayback() {
       setError(`Error transferring playback: ${err.message}`);
       return false;
     }
-  }, [deviceId, accessToken]);
+  }, [deviceId, accessToken, checkActiveDevice]);
 
+  // FIXED: Better playTrack function
   const playTrack = useCallback(async (spotifyUri, positionMs = 0) => {
     if (!player || !deviceId || !accessToken) {
       console.error('Player not ready or missing token/deviceId');
@@ -385,11 +407,12 @@ export function useSpotifyWebPlayback() {
         return false;
       }
       
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait longer for device activation
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     // Add rate limiting protection
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
       const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
@@ -406,6 +429,7 @@ export function useSpotifyWebPlayback() {
 
       if (response.ok || response.status === 202) {
         console.log('Successfully started playback');
+        isPlayingRef.current = true;
         startPositionUpdates();
         return true;
       } else {
@@ -421,9 +445,20 @@ export function useSpotifyWebPlayback() {
     }
   }, [player, deviceId, accessToken, isActive, transferPlayback, startPositionUpdates]);
 
+  // FIXED: Proper toggle play function
   const togglePlay = useCallback(async () => {
-    if (player) {
+    if (!player) return;
+
+    try {
       await player.togglePlay();
+      
+      // Update ref immediately for better UI response
+      const state = await player.getCurrentState();
+      if (state) {
+        isPlayingRef.current = !state.paused;
+      }
+    } catch (err) {
+      console.error('Error toggling play:', err);
     }
   }, [player]);
 
@@ -442,7 +477,7 @@ export function useSpotifyWebPlayback() {
   const seek = useCallback(async (positionMs) => {
     if (player) {
       await player.seek(positionMs);
-      lastKnownPositionRef.current = positionMs;
+      lastPositionRef.current = positionMs;
       lastUpdateTimeRef.current = Date.now();
       setPlayerState(prevState => ({
         ...prevState,
@@ -490,6 +525,7 @@ export function useSpotifyWebPlayback() {
     getCurrentState,
     transferPlayback,
     
+    // FIXED: More accurate playing state
     isPlaying: playerState && !playerState.paused,
     currentTrack: playerState?.track_window?.current_track,
     position: playerState?.position || 0,
