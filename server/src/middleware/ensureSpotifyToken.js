@@ -1,5 +1,24 @@
 import { refreshSpotifyToken } from '../utils/refreshSpotifyToken.js';
 
+const isProd = process.env.NODE_ENV === 'production';
+
+// Helper function for consistent cookie options
+const getCookieOptions = (maxAge = null) => ({
+  httpOnly: true,
+  signed: true,
+  maxAge: maxAge,
+  sameSite: isProd ? 'none' : 'lax',
+  secure: isProd,
+});
+
+// Helper function for clearing cookies
+const getClearCookieOptions = () => ({
+  httpOnly: true,
+  signed: true,
+  sameSite: isProd ? 'none' : 'lax',
+  secure: isProd,
+});
+
 /**
  * Ensures req.spotifyAccessToken is a live token.
  * If the access token is missing/expired but we have a refresh_token,
@@ -9,6 +28,8 @@ export async function ensureSpotifyToken(req, res, next) {
   console.log('🔍 ensureSpotifyToken middleware');
   console.log('    cookies:', Object.keys(req.cookies));
   console.log('    signed cookies:', Object.keys(req.signedCookies));
+  console.log('    cookie header present:', !!req.headers.cookie);
+  console.log('    origin:', req.headers.origin);
   
   let access = req.signedCookies.spotify_token;
   const refresh = req.signedCookies.refresh_token;
@@ -39,16 +60,8 @@ export async function ensureSpotifyToken(req, res, next) {
     console.log('    ✅ Token refreshed successfully');
     console.log('    New token expires in:', data.expires_in, 'seconds');
 
-    // Set new cookie with proper cross-site options
-    const isProd = process.env.NODE_ENV === 'production';
-    const cookieOptions = {
-      httpOnly: true,
-      signed: true,
-      maxAge: data.expires_in * 1000,
-      sameSite: isProd ? 'none' : 'lax',
-      secure: isProd,
-    };
-    
+    // Set new cookie with consistent options
+    const cookieOptions = getCookieOptions(data.expires_in * 1000);
     res.cookie('spotify_token', access, cookieOptions);
     console.log('    🍪 Set new cookie with options:', cookieOptions);
     
@@ -57,12 +70,8 @@ export async function ensureSpotifyToken(req, res, next) {
   } catch (err) {
     console.error('    ❌ Refresh failed:', err.response?.data || err.message);
     
-    // Clear invalid refresh token
-    const clearOpts = {
-      sameSite: isProd ? 'none' : 'lax',
-      secure: isProd,
-      httpOnly: true
-    };
+    // Clear invalid refresh token with consistent options
+    const clearOpts = getClearCookieOptions();
     res.clearCookie('refresh_token', clearOpts);
     
     return res.status(401).json({ error: 'Re-login required' });

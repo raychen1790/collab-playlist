@@ -23,14 +23,22 @@ const scopes = [
   'user-library-read'
 ].join(' ');
 
-// Helper function for cookie options
+// Helper function for cookie options - CONSISTENT across all endpoints
 const getCookieOptions = (maxAge = null) => ({
   httpOnly: true,
   signed: true,
   maxAge: maxAge,
-  sameSite: isProd ? 'none' : 'lax',  // Use 'lax' for local development
-  secure: isProd,                      // Only secure in production
-  domain: isProd ? undefined : undefined,  // Let browser handle domain
+  sameSite: isProd ? 'none' : 'lax',
+  secure: isProd,
+  // Remove domain setting to let browser handle it
+});
+
+// Helper function for clearing cookies - CONSISTENT options
+const getClearCookieOptions = () => ({
+  httpOnly: true,
+  signed: true, // Important: use signed when clearing signed cookies
+  sameSite: isProd ? 'none' : 'lax',
+  secure: isProd,
 });
 
 // 1. Redirect user to Spotify login
@@ -50,13 +58,16 @@ router.get('/login', (req, res) => {
     show_dialog: 'true'
   });
   
-  // Set state cookie with appropriate options
+  // Use SIGNED cookies for state as well - more secure
   res.cookie('spotify_auth_state', state, {
     httpOnly: true,
+    signed: true, // Changed to signed
     maxAge: 10 * 60 * 1000,
     sameSite: isProd ? 'none' : 'lax',
     secure: isProd
   });
+  
+  console.log('🍪 Set spotify_auth_state cookie (signed)');
   
   res.redirect(`https://accounts.spotify.com/authorize?${params}`);
 });
@@ -65,7 +76,7 @@ router.get('/login', (req, res) => {
 router.get('/callback', async (req, res) => {
   const code = req.query.code || null;
   const state = req.query.state || null;
-  const storedState = req.cookies.spotify_auth_state || null;
+  const storedState = req.signedCookies.spotify_auth_state || null; // Changed to signedCookies
 
   console.log('👉 GET /auth/callback');
   console.log('    code:', !!code);
@@ -74,9 +85,10 @@ router.get('/callback', async (req, res) => {
   console.log('    all cookies:', Object.keys(req.cookies));
   console.log('    signed cookies:', Object.keys(req.signedCookies));
 
-  // Clear the state cookie
+  // Clear the state cookie with same options used to set it
   res.clearCookie('spotify_auth_state', {
     httpOnly: true,
+    signed: true, // Important: match the signed setting
     sameSite: isProd ? 'none' : 'lax',
     secure: isProd
   });
@@ -153,6 +165,7 @@ router.get('/me', ensureSpotifyToken, async (req, res) => {
   console.log('    signed cookies:', Object.keys(req.signedCookies));
   console.log('    origin:', req.headers.origin);
   console.log('    user-agent:', req.headers['user-agent']?.substring(0, 50) + '...');
+  console.log('    cookie header present:', !!req.headers.cookie);
   
   if (!token) {
     console.log('   ↳ no token, returning user: null');
@@ -169,11 +182,8 @@ router.get('/me', ensureSpotifyToken, async (req, res) => {
     console.error('   ↳ error fetching profile:', err.response?.status, err.response?.data?.error?.message || err.message);
     
     if (err.response?.status === 401) {
-      const clearOpts = {
-        sameSite: isProd ? 'none' : 'lax',
-        secure: isProd,
-        httpOnly: true
-      };
+      // Use consistent clear options
+      const clearOpts = getClearCookieOptions();
       res.clearCookie('spotify_token', clearOpts);
       res.clearCookie('refresh_token', clearOpts);
     }
@@ -207,7 +217,8 @@ router.get('/token', requireAuth, async (req, res) => {
     console.error('   ↳ token verification failed:', err.response?.status, err.response?.data?.error?.message || err.message);
     
     if (err.response?.status === 401) {
-      res.clearCookie('spotify_token');
+      const clearOpts = getClearCookieOptions();
+      res.clearCookie('spotify_token', clearOpts);
       return res.status(401).json({ 
         error: 'Token expired or invalid',
         reauth_required: true
@@ -222,11 +233,7 @@ router.get('/token', requireAuth, async (req, res) => {
 router.get('/reauth', (req, res) => {
   console.log('👉 GET /auth/reauth - clearing cookies and forcing reauth');
   
-  const clearOpts = {
-    sameSite: isProd ? 'none' : 'lax',
-    secure: isProd,
-    httpOnly: true
-  };
+  const clearOpts = getClearCookieOptions();
   res.clearCookie('spotify_token', clearOpts);
   res.clearCookie('refresh_token', clearOpts);
   
@@ -237,15 +244,14 @@ router.get('/reauth', (req, res) => {
 router.post('/logout', (req, res) => {
   console.log('👉 POST /auth/logout');
   
-  const clearOpts = {
-    sameSite: isProd ? 'none' : 'lax',
-    secure: isProd,
-    httpOnly: true
-  };
+  const clearOpts = getClearCookieOptions();
   res.clearCookie('spotify_token', clearOpts);
   res.clearCookie('refresh_token', clearOpts);
+  
+  // State cookie uses different options
   res.clearCookie('spotify_auth_state', {
     httpOnly: true,
+    signed: true,
     sameSite: isProd ? 'none' : 'lax',
     secure: isProd
   });
