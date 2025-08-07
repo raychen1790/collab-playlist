@@ -1,4 +1,4 @@
-// client/src/contexts/AuthContext.jsx - Updated to handle URL-based tokens
+// client/src/contexts/AuthContext.jsx - Enhanced with token management
 import { createContext, useState, useEffect } from 'react';
 
 export const AuthContext = createContext();
@@ -6,13 +6,13 @@ export const AuthContext = createContext();
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [accessToken, setAccessToken] = useState(null);
   
   // Use environment variable for API URL, fallback to local dev
   const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
   
   // Debug logging
   console.log('🔍 API_URL:', API_URL);
-  console.log('🔍 All env vars:', import.meta.env);
 
   useEffect(() => {
     console.log('🔍 AuthContext initializing...');
@@ -42,6 +42,7 @@ export function AuthProvider({ children }) {
       if (error) {
         console.error('🔍 Auth error in URL:', error);
         setUser(null);
+        setAccessToken(null);
         setLoading(false);
         return;
       }
@@ -53,6 +54,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       console.error('🔍 Auth initialization error:', err);
       setUser(null);
+      setAccessToken(null);
     } finally {
       setLoading(false);
     }
@@ -74,7 +76,10 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      // Store tokens on backend via API call
+      // Store tokens in memory for immediate use
+      setAccessToken(tokenData.access_token);
+
+      // Also store tokens on backend via API call for cookie fallback
       const storeResponse = await fetch(`${API_URL}/auth/store-tokens`, {
         method: 'POST',
         credentials: 'include',
@@ -94,12 +99,32 @@ export function AuthProvider({ children }) {
         setUser(data.user);
       } else {
         console.error('🔍 Failed to store tokens:', storeResponse.status);
-        throw new Error('Failed to store tokens');
+        // Even if storing fails, we can still use the token temporarily
+        await verifyToken(tokenData.access_token);
       }
     } catch (err) {
       console.error('🔍 Error handling URL tokens:', err);
       // Fallback to regular session check
       await checkExistingSession();
+    }
+  };
+
+  const verifyToken = async (token) => {
+    try {
+      const response = await fetch('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        setAccessToken(token);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Token verification failed:', err);
+      return false;
     }
   };
 
@@ -115,10 +140,82 @@ export function AuthProvider({ children }) {
       const data = await response.json();
       console.log('🔍 Response data:', data);
       
-      setUser(data.user || null);
+      if (data.user) {
+        setUser(data.user);
+        // Try to get a fresh token for API calls
+        await getStoredToken();
+      } else {
+        setUser(null);
+        setAccessToken(null);
+      }
     } catch (err) {
       console.error('🔍 Fetch error:', err);
       setUser(null);
+      setAccessToken(null);
+    }
+  };
+
+  const getStoredToken = async () => {
+    try {
+      const response = await fetch(`${API_URL}/auth/token`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAccessToken(data.access_token);
+        return data.access_token;
+      }
+    } catch (err) {
+      console.error('Failed to get stored token:', err);
+    }
+    return null;
+  };
+
+  // Enhanced API fetch function that includes token in headers
+  const apiRequest = async (endpoint, options = {}) => {
+    const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
+    
+    // Prepare headers
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
+    // Add token to Authorization header if available
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
+
+    const config = {
+      ...options,
+      headers,
+      credentials: 'include', // Still include cookies as fallback
+    };
+
+    console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`, {
+      hasToken: !!accessToken,
+      hasCredentials: true,
+    });
+
+    try {
+      const response = await fetch(url, config);
+      
+      // If we get 401 and we have no token, try to refresh
+      if (response.status === 401 && !accessToken && user) {
+        console.log('🔄 401 error, attempting to get fresh token...');
+        const freshToken = await getStoredToken();
+        if (freshToken) {
+          // Retry with fresh token
+          config.headers.Authorization = `Bearer ${freshToken}`;
+          return await fetch(url, config);
+        }
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('🚨 API Request failed:', error);
+      throw error;
     }
   };
 
@@ -132,6 +229,7 @@ export function AuthProvider({ children }) {
       console.error('Logout error:', err);
     } finally {
       setUser(null);
+      setAccessToken(null);
     }
   };
 
@@ -139,7 +237,9 @@ export function AuthProvider({ children }) {
     user,
     setUser,
     loading,
-    logout
+    accessToken,
+    logout,
+    apiRequest, // Expose the enhanced API request function
   };
 
   return (

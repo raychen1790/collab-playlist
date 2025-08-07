@@ -1,4 +1,4 @@
-// client/src/pages/RoomPage.jsx - Enhanced design with compact tracks and fun styling
+// client/src/pages/RoomPage.jsx - Updated to use enhanced API requests
 import {
   useContext,
   useEffect,
@@ -14,12 +14,9 @@ import { useMusicPlayer } from '../hooks/useMusicPlayer.js';
 import { supabase } from '../lib/supabaseClient.js';
 import { Play, Shuffle, Music, AlertCircle, Loader, Activity, Users, Clock, Zap } from 'lucide-react';
 
-// Get API URL from environment
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
-
 export default function RoomPage() {
   const { roomId } = useParams();
-  const { user } = useContext(AuthContext);
+  const { user, apiRequest } = useContext(AuthContext);
   const [search, setSearch] = useSearchParams();
 
   /* ---------------- state ---------------- */
@@ -65,10 +62,9 @@ export default function RoomPage() {
     async (mode = sortMode) => {
       setLoading(true);
       try {
-        const res = await fetch(
-          `${API_URL}/api/rooms/${roomId}?sort=${mode}`,
-          { credentials: 'include' }
-        );
+        // Use the enhanced apiRequest function
+        const res = await apiRequest(`/api/rooms/${roomId}?sort=${mode}`);
+        
         if (res.ok) {
           const json = await res.json();
           setRoom(json.room);
@@ -84,7 +80,7 @@ export default function RoomPage() {
       }
       setLoading(false);
     },
-    [roomId, sortMode]
+    [roomId, sortMode, apiRequest]
   );
 
   useEffect(() => {

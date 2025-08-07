@@ -1,4 +1,4 @@
-// client/src/pages/Home.jsx - Fixed with proper auth handling
+// client/src/pages/Home.jsx - Updated to use enhanced API requests
 import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
@@ -102,7 +102,7 @@ function LoginScreen() {
 /* ----------  authenticated view ---------- */
 function AuthedHome() {
   const nav = useNavigate();
-  const { user } = useContext(AuthContext);
+  const { user, apiRequest } = useContext(AuthContext);
   const [roomName, setRoomName] = useState('');
   const [playlistInput, setPlaylistInput] = useState('');
   const [creating, setCreating] = useState(false);
@@ -124,12 +124,9 @@ function AuthedHome() {
       console.log('🔍 Creating room with:', { roomName, playlistId });
       console.log('🔍 User context:', user);
       
-      const res = await fetch(`${API_URL}/api/rooms`, {
+      // Use the enhanced apiRequest function
+      const res = await apiRequest('/api/rooms', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ 
           name: roomName, 
           spotifyPlaylistId: playlistId 

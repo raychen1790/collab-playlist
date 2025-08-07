@@ -1,5 +1,6 @@
-// server/src/middleware/ensureSpotifyToken.js - Enhanced debugging
+// server/src/middleware/ensureSpotifyToken.js - Enhanced for dual auth
 import { refreshSpotifyToken } from '../utils/refreshSpotifyToken.js';
+import axios from 'axios';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -23,41 +24,78 @@ const getClearCookieOptions = () => ({
 });
 
 /**
+ * Enhanced middleware that handles both cookie-based and header-based authentication
  * Ensures req.spotifyAccessToken is a live token.
- * If the access token is missing/expired but we have a refresh_token,
- * it transparently refreshes and sets a new spotify_token cookie.
  */
 export async function ensureSpotifyToken(req, res, next) {
   const endpoint = `${req.method} ${req.path}`;
   console.log(`🔍 ensureSpotifyToken middleware for ${endpoint}`);
-  console.log('    cookies:', Object.keys(req.cookies));
-  console.log('    signed cookies:', Object.keys(req.signedCookies));
-  console.log('    cookie header present:', !!req.headers.cookie);
-  console.log('    cookie header length:', req.headers.cookie?.length || 0);
-  console.log('    origin:', req.headers.origin);
-  console.log('    user-agent prefix:', req.headers['user-agent']?.substring(0, 50));
   
-  // Log a snippet of the cookie header for debugging
-  if (req.headers.cookie) {
-    console.log('    cookie header snippet:', req.headers.cookie.substring(0, 100) + '...');
+  // Check for Authorization header first (preferred method)
+  const authHeader = req.headers.authorization;
+  let headerToken = null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    headerToken = authHeader.slice(7);
+    console.log('    found Authorization header with token');
   }
   
+  // Check cookies as fallback
   let access = req.signedCookies.spotify_token;
   const refresh = req.signedCookies.refresh_token;
 
-  console.log('    has access token:', !!access);
+  console.log('    has header token:', !!headerToken);
+  console.log('    has cookie access token:', !!access);
   console.log('    has refresh token:', !!refresh);
-  console.log('    access token length:', access?.length || 0);
-  console.log('    refresh token length:', refresh?.length || 0);
+  console.log('    cookie header present:', !!req.headers.cookie);
+  console.log('    origin:', req.headers.origin);
 
-  // If we have access token, set it and continue
-  if (access) {
-    console.log('    ✅ Access token found, proceeding');
-    req.spotifyAccessToken = access;
-    return next();
+  // Prefer header token over cookie token
+  const tokenToUse = headerToken || access;
+
+  if (tokenToUse) {
+    console.log(`    ✅ Using ${headerToken ? 'header' : 'cookie'} token`);
+    
+    // Verify the token is still valid before proceeding
+    try {
+      const response = await axios.get('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${tokenToUse}` },
+        timeout: 5000
+      });
+      
+      console.log('    ✅ Token verified for user:', response.data.display_name);
+      req.spotifyAccessToken = tokenToUse;
+      req.user = response.data; // Store user data
+      return next();
+      
+    } catch (verifyError) {
+      console.log('    ❌ Token verification failed:', verifyError.response?.status, verifyError.response?.data?.error?.message || verifyError.message);
+      
+      // If header token failed, don't try to refresh (client should handle)
+      if (headerToken) {
+        console.log('    ↳ Header token invalid, returning 401');
+        return res.status(401).json({ 
+          error: 'Invalid access token',
+          reauth_required: true,
+          debug: { source: 'header_token_invalid' }
+        });
+      }
+      
+      // If cookie token failed and we have refresh token, try refreshing
+      if (refresh) {
+        console.log('    🔄 Cookie token invalid, attempting refresh...');
+        // Fall through to refresh logic
+      } else {
+        console.log('    ↳ No refresh token available after cookie verification failed');
+        return res.status(401).json({ 
+          error: 'Token expired and no refresh available',
+          reauth_required: true,
+          debug: { source: 'cookie_token_invalid_no_refresh' }
+        });
+      }
+    }
   }
 
-  console.log('    ❌ No access token, attempting refresh...');
+  console.log('    ❌ No valid access token, attempting refresh...');
 
   // Try refreshing if we have a refresh token
   if (!refresh) {
@@ -65,8 +103,10 @@ export async function ensureSpotifyToken(req, res, next) {
     console.log(`    ↳ Returning 401 for ${endpoint}`);
     return res.status(401).json({ 
       error: 'Not authenticated',
+      reauth_required: true,
       debug: {
-        hasAccessToken: !!access,
+        hasHeaderToken: !!headerToken,
+        hasCookieToken: !!access,
         hasRefreshToken: !!refresh,
         cookiesCount: Object.keys(req.cookies).length,
         signedCookiesCount: Object.keys(req.signedCookies).length,
@@ -79,19 +119,25 @@ export async function ensureSpotifyToken(req, res, next) {
   try {
     console.log('    🔄 Refreshing token...');
     const data = await refreshSpotifyToken(refresh);
-    access = data.access_token;
+    const newAccessToken = data.access_token;
 
     console.log('    ✅ Token refreshed successfully');
     console.log('    New token expires in:', data.expires_in, 'seconds');
-    console.log('    New token length:', access?.length || 0);
 
     // Set new cookie with consistent options
     const cookieOptions = getCookieOptions(data.expires_in * 1000);
-    res.cookie('spotify_token', access, cookieOptions);
+    res.cookie('spotify_token', newAccessToken, cookieOptions);
     console.log('    🍪 Set new cookie with options:', cookieOptions);
     
-    req.spotifyAccessToken = access;
+    // Verify the new token and get user data
+    const userResponse = await axios.get('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${newAccessToken}` }
+    });
+    
+    req.spotifyAccessToken = newAccessToken;
+    req.user = userResponse.data;
     return next();
+    
   } catch (err) {
     console.error('    ❌ Refresh failed:', err.response?.data || err.message);
     console.error('    ❌ Full refresh error:', {
@@ -109,6 +155,7 @@ export async function ensureSpotifyToken(req, res, next) {
     console.log(`    ↳ Returning 401 after failed refresh for ${endpoint}`);
     return res.status(401).json({ 
       error: 'Re-login required',
+      reauth_required: true,
       debug: {
         refreshFailed: true,
         refreshError: err.message,
