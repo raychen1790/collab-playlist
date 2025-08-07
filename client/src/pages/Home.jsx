@@ -1,11 +1,30 @@
-// client/src/pages/Home.jsx - Enhanced design with fun fonts and better layout
+// client/src/pages/Home.jsx - Updated to handle loading state
 import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
-import { Music, Plus, ArrowRight, Sparkles } from 'lucide-react';
+import { Music, Plus, ArrowRight, Sparkles, Loader2 } from 'lucide-react';
 
 // Get API URL from environment
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
+
+/* ----------  loading view ---------- */
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center font-main">
+      <div className="text-center">
+        <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-white/20 to-white/10 backdrop-blur-lg rounded-3xl mb-8 shadow-2xl border border-white/20">
+          <Loader2 size={40} className="text-white animate-spin" />
+        </div>
+        <h2 className="text-2xl font-fun font-bold text-white mb-4">
+          Setting up your session...
+        </h2>
+        <p className="text-white/80 font-medium">
+          Please wait while we authenticate with Spotify
+        </p>
+      </div>
+    </div>
+  );
+}
 
 /* ----------  unauthenticated view ---------- */
 function LoginScreen() {
@@ -245,6 +264,11 @@ function AuthedHome() {
 
 /* ----------  top-level Home ---------- */
 export default function Home() {
-  const { user } = useContext(AuthContext);
+  const { user, loading } = useContext(AuthContext);
+  
+  if (loading) {
+    return <LoadingScreen />;
+  }
+  
   return user ? <AuthedHome /> : <LoginScreen />;
 }

@@ -77,7 +77,7 @@ router.get('/login', (req, res) => {
   res.redirect(`https://accounts.spotify.com/authorize?${params}`);
 });
 
-// 2. Handle callback & exchange code for tokens
+// 2. Handle callback & exchange code for tokens - MODIFIED for URL transfer
 router.get('/callback', async (req, res) => {
   const code = req.query.code || null;
   const state = req.query.state || null;
@@ -87,12 +87,8 @@ router.get('/callback', async (req, res) => {
   console.log('    code:', !!code);
   console.log('    state:', state);
   console.log('    storedState:', storedState);
-  console.log('    all cookies:', Object.keys(req.cookies));
-  console.log('    signed cookies:', Object.keys(req.signedCookies));
-  console.log('    request origin:', req.headers.origin);
-  console.log('    user-agent:', req.headers['user-agent']?.substring(0, 100));
 
-  // Clear the state cookie with same options used to set it
+  // Clear the state cookie
   res.clearCookie('spotify_auth_state', {
     httpOnly: true,
     signed: true,
@@ -131,36 +127,30 @@ router.get('/callback', async (req, res) => {
     
     const { access_token, refresh_token, expires_in } = response.data;
     console.log('✅ Successfully obtained tokens');
-    console.log('    expires_in:', expires_in);
-    console.log('    has refresh_token:', !!refresh_token);
-    
-    // Verify token has correct scopes
-    try {
-      const tokenInfo = await axios.get('https://api.spotify.com/v1/me', {
-        headers: { Authorization: `Bearer ${access_token}` }
-      });
-      console.log('✅ Token verification successful for user:', tokenInfo.data.display_name);
-    } catch (tokenError) {
-      console.error('❌ Token verification failed:', tokenError.response?.status, tokenError.response?.data);
-      return res.redirect(`${process.env.FRONTEND_URI}?error=token_verification_failed`);
-    }
-    
-    // CRITICAL: Set cookies with proper options for cross-site
+
+    // NEW APPROACH: Set cookies AND pass via URL as fallback
     const accessTokenCookieOptions = getCookieOptions(expires_in * 1000);
     res.cookie('spotify_token', access_token, accessTokenCookieOptions);
-    console.log('🍪 Set spotify_token cookie with options:', accessTokenCookieOptions);
-
+    
     if (refresh_token) {
       const refreshTokenCookieOptions = getCookieOptions(30 * 24 * 3600 * 1000);
       res.cookie('refresh_token', refresh_token, refreshTokenCookieOptions);
-      console.log('🍪 Set refresh_token cookie with options:', refreshTokenCookieOptions);
     }
 
-    // IMPORTANT: Add a small delay before redirect to ensure cookies are set
-    setTimeout(() => {
-      console.log('🏠 Redirecting to frontend:', process.env.FRONTEND_URI);
-      res.redirect(process.env.FRONTEND_URI);
-    }, 100);
+    // Create a secure token package for URL transfer
+    const tokenPackage = {
+      access_token,
+      refresh_token,
+      expires_in,
+      expires_at: Date.now() + (expires_in * 1000),
+      timestamp: Date.now()
+    };
+
+    // Encode the token package
+    const encodedTokens = encodeURIComponent(JSON.stringify(tokenPackage));
+    
+    console.log('🏠 Redirecting to frontend with token package');
+    res.redirect(`${process.env.FRONTEND_URI}?auth_tokens=${encodedTokens}`);
 
   } catch (err) {
     console.error('❌ Authentication failed:', err.response?.data || err.message);
@@ -168,45 +158,39 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-// 3. Get user profile - with enhanced debugging
-router.get('/me', ensureSpotifyToken, async (req, res) => {
-  const token = req.spotifyAccessToken;
-  console.log('👉 GET /auth/me');
-  console.log('    has token:', !!token);
-  console.log('    cookies:', Object.keys(req.cookies));
-  console.log('    signed cookies:', Object.keys(req.signedCookies));
-  console.log('    origin:', req.headers.origin);
-  console.log('    referer:', req.headers.referer);
-  console.log('    user-agent:', req.headers['user-agent']?.substring(0, 50) + '...');
-  console.log('    cookie header present:', !!req.headers.cookie);
-  console.log('    cookie header length:', req.headers.cookie?.length || 0);
+// 3. NEW: Store tokens endpoint (for URL-based auth)
+router.post('/store-tokens', async (req, res) => {
+  const { access_token, refresh_token, expires_in } = req.body;
   
-  // Log the actual cookie header (first 200 chars) for debugging
-  if (req.headers.cookie) {
-    console.log('    cookie header preview:', req.headers.cookie.substring(0, 200) + '...');
-  }
-  
-  if (!token) {
-    console.log('   ↳ no token, returning user: null');
-    return res.json({ user: null });
+  console.log('👉 POST /auth/store-tokens');
+  console.log('    has access_token:', !!access_token);
+  console.log('    has refresh_token:', !!refresh_token);
+
+  if (!access_token) {
+    return res.status(400).json({ error: 'Missing access token' });
   }
 
   try {
+    // Verify the token before storing
     const profile = await axios.get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${access_token}` }
     });
-    console.log('   ↳ got profile:', profile.data.display_name);
-    res.json({ user: profile.data });
-  } catch (err) {
-    console.error('   ↳ error fetching profile:', err.response?.status, err.response?.data?.error?.message || err.message);
+
+    // Store in cookies
+    const accessTokenCookieOptions = getCookieOptions(expires_in * 1000);
+    res.cookie('spotify_token', access_token, accessTokenCookieOptions);
     
-    if (err.response?.status === 401) {
-      const clearOpts = getClearCookieOptions();
-      res.clearCookie('spotify_token', clearOpts);
-      res.clearCookie('refresh_token', clearOpts);
+    if (refresh_token) {
+      const refreshTokenCookieOptions = getCookieOptions(30 * 24 * 3600 * 1000);
+      res.cookie('refresh_token', refresh_token, refreshTokenCookieOptions);
     }
-    
-    res.json({ user: null });
+
+    console.log('✅ Tokens stored successfully for user:', profile.data.display_name);
+    res.json({ success: true, user: profile.data });
+
+  } catch (err) {
+    console.error('❌ Token verification failed:', err.response?.status, err.response?.data);
+    res.status(401).json({ error: 'Invalid tokens' });
   }
 });
 
