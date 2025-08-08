@@ -1,7 +1,44 @@
-// client/src/contexts/AuthContext.jsx - FIXED VERSION with persistent storage and better error handling
-import { createContext, useState, useEffect, useCallback } from 'react';
+// client/src/contexts/AuthContext.jsx - IMPROVED VERSION with better rate limiting and error handling
+import { createContext, useState, useEffect, useCallback, useRef } from 'react';
 
 export const AuthContext = createContext();
+
+// Simple rate limiter for API requests
+class ApiRateLimiter {
+  constructor() {
+    this.lastRequest = 0;
+    this.minInterval = 1000; // Minimum 1 second between API requests
+    this.rateLimitCooldown = 0;
+  }
+
+  async waitIfNeeded() {
+    const now = Date.now();
+    
+    // Check if we're in a rate limit cooldown
+    if (now < this.rateLimitCooldown) {
+      const waitTime = this.rateLimitCooldown - now;
+      console.log(`⏳ API rate limit cooldown: ${waitTime}ms`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    // Ensure minimum interval between requests
+    const timeSinceLastRequest = now - this.lastRequest;
+    if (timeSinceLastRequest < this.minInterval) {
+      const waitTime = this.minInterval - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this.lastRequest = Date.now();
+  }
+
+  handleRateLimitError(retryAfter = 5) {
+    // Set cooldown based on Retry-After header or default to 5 seconds
+    this.rateLimitCooldown = Date.now() + (retryAfter * 1000);
+    console.log(`🚫 API rate limited - setting ${retryAfter}s cooldown`);
+  }
+}
+
+const apiRateLimiter = new ApiRateLimiter();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -11,17 +48,35 @@ export function AuthProvider({ children }) {
   // Use environment variable for API URL, fallback to local dev
   const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
   
+  // Token caching
+  const tokenCache = useRef({
+    token: null,
+    expiresAt: 0,
+    refreshPromise: null
+  });
+
   console.log('🔍 API_URL:', API_URL);
 
-  // FIXED: Token storage helpers that work in Claude.ai environment
   const storeToken = useCallback((token, user) => {
-    // Store in memory state
     setAccessToken(token);
     setUser(user);
     
-    // Also store in a way that persists during the session
+    // Cache token with estimated expiration (50 minutes for safety)
+    if (token) {
+      tokenCache.current = {
+        token,
+        expiresAt: Date.now() + (50 * 60 * 1000), // 50 minutes
+        refreshPromise: null
+      };
+    } else {
+      tokenCache.current = {
+        token: null,
+        expiresAt: 0,
+        refreshPromise: null
+      };
+    }
+    
     if (token && user) {
-      // Create a custom event to notify other components
       window.dispatchEvent(new CustomEvent('authStateChanged', {
         detail: { token, user, timestamp: Date.now() }
       }));
@@ -31,29 +86,43 @@ export function AuthProvider({ children }) {
   const clearAuth = useCallback(() => {
     setAccessToken(null);
     setUser(null);
-    // Notify other components
+    tokenCache.current = {
+      token: null,
+      expiresAt: 0,
+      refreshPromise: null
+    };
     window.dispatchEvent(new CustomEvent('authStateChanged', {
       detail: { token: null, user: null, timestamp: Date.now() }
     }));
   }, []);
 
-  // FIXED: Better error handling and retry logic
   const handleAuthError = useCallback((error, context) => {
     console.error(`🚨 Auth error in ${context}:`, error);
     
-    // Only clear auth state for certain error types
-    if (error.message?.includes('401') || 
+    if (error.status === 429) {
+      apiRateLimiter.handleRateLimitError(5);
+      return false; // Don't clear auth for rate limits
+    }
+    
+    if (error.status === 401 || 
+        error.message?.includes('401') || 
         error.message?.includes('unauthorized') ||
         error.message?.includes('reauth_required')) {
       console.log('🗑️ Clearing auth state due to unauthorized error');
       clearAuth();
       
-      // Redirect to login if we're not already there
-      if (!window.location.pathname.includes('/login') && !window.location.search.includes('auth_tokens')) {
+      if (!window.location.pathname.includes('/login') && 
+          !window.location.search.includes('auth_tokens') &&
+          !window.location.search.includes('error=')) {
         console.log('🔄 Redirecting to re-authenticate');
-        window.location.href = `${API_URL}/auth/login`;
+        setTimeout(() => {
+          window.location.href = `${API_URL}/auth/login`;
+        }, 1000);
       }
+      return true; // Auth was cleared
     }
+    
+    return false;
   }, [API_URL, clearAuth]);
 
   useEffect(() => {
@@ -63,7 +132,6 @@ export function AuthProvider({ children }) {
 
   const handleAuth = async () => {
     try {
-      // Check if we have tokens in the URL (from OAuth callback)
       const urlParams = new URLSearchParams(window.location.search);
       const encodedTokens = urlParams.get('auth_tokens');
       
@@ -71,7 +139,6 @@ export function AuthProvider({ children }) {
         console.log('🔍 Found tokens in URL, processing...');
         await handleUrlTokens(encodedTokens);
         
-        // Clean up the URL
         const cleanUrl = window.location.pathname;
         window.history.replaceState({}, document.title, cleanUrl);
         
@@ -79,7 +146,6 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      // Check for error in URL
       const error = urlParams.get('error');
       if (error) {
         console.error('🔍 Auth error in URL:', error);
@@ -88,7 +154,6 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      // No URL tokens, try regular cookie-based auth
       console.log('🔍 Checking existing session...');
       await checkExistingSession();
       
@@ -108,24 +173,23 @@ export function AuthProvider({ children }) {
         expiresIn: tokenData.expires_in
       });
 
-      // Check if tokens are expired
       if (tokenData.expires_at && Date.now() > tokenData.expires_at) {
         console.log('🔍 Tokens expired, falling back to regular auth');
         await checkExistingSession();
         return;
       }
 
-      // FIXED: Store tokens immediately for Web Playback SDK
       storeToken(tokenData.access_token, null);
 
-      // Store tokens on backend with better error handling
       try {
+        await apiRateLimiter.waitIfNeeded();
+        
         const storeResponse = await fetch(`${API_URL}/auth/store-tokens`, {
           method: 'POST',
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${tokenData.access_token}` // FIXED: Include token in header
+            'Authorization': `Bearer ${tokenData.access_token}`
           },
           body: JSON.stringify({
             access_token: tokenData.access_token,
@@ -138,15 +202,18 @@ export function AuthProvider({ children }) {
           const data = await storeResponse.json();
           console.log('🔍 Tokens stored successfully:', data.user?.display_name);
           storeToken(tokenData.access_token, data.user);
+        } else if (storeResponse.status === 429) {
+          const retryAfter = storeResponse.headers.get('Retry-After') || 5;
+          apiRateLimiter.handleRateLimitError(parseInt(retryAfter));
+          console.log('Store tokens rate limited, but token is valid');
+          await verifyToken(tokenData.access_token);
         } else {
-          const errorData = await storeResponse.json();
+          const errorData = await storeResponse.json().catch(() => ({}));
           console.error('🔍 Failed to store tokens:', storeResponse.status, errorData);
-          // Still try to verify the token directly
           await verifyToken(tokenData.access_token);
         }
       } catch (storeError) {
         console.error('🔍 Store tokens request failed:', storeError);
-        // Fallback to direct token verification
         await verifyToken(tokenData.access_token);
       }
     } catch (err) {
@@ -157,13 +224,27 @@ export function AuthProvider({ children }) {
 
   const verifyToken = async (token) => {
     try {
+      await apiRateLimiter.waitIfNeeded();
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await fetch('https://api.spotify.com/v1/me', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (response.ok) {
         const userData = await response.json();
         storeToken(token, userData);
+        return true;
+      } else if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After') || 5;
+        apiRateLimiter.handleRateLimitError(parseInt(retryAfter));
+        // Still consider token valid for now
+        storeToken(token, { display_name: 'User' });
         return true;
       }
       return false;
@@ -173,13 +254,14 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // FIXED: Better session checking with retry logic and token extraction
   const checkExistingSession = async (retryCount = 0) => {
     try {
       console.log(`🔍 Fetching from: ${API_URL}/auth/me (attempt ${retryCount + 1})`);
       
+      await apiRateLimiter.waitIfNeeded();
+      
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       const response = await fetch(`${API_URL}/auth/me`, {
         credentials: 'include',
@@ -195,7 +277,6 @@ export function AuthProvider({ children }) {
         console.log('🔍 Response data:', data);
         
         if (data.user) {
-          // FIXED: Also get a fresh token for API calls immediately
           const token = await getStoredToken();
           storeToken(token, data.user);
         } else {
@@ -204,63 +285,110 @@ export function AuthProvider({ children }) {
       } else if (response.status === 401) {
         console.log('🔍 401 response - user not authenticated');
         clearAuth();
+      } else if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After') || 5;
+        apiRateLimiter.handleRateLimitError(parseInt(retryAfter));
+        
+        if (retryCount < 2) {
+          console.log(`🔄 Rate limited, retrying session check in ${retryAfter}s...`);
+          setTimeout(() => checkExistingSession(retryCount + 1), retryAfter * 1000);
+        } else {
+          console.log('🔍 Too many rate limits, proceeding without auth');
+          clearAuth();
+        }
       } else {
         throw new Error(`HTTP ${response.status}`);
       }
     } catch (err) {
       console.error('🔍 Session check error:', err);
       
-      // Retry logic for network errors
       if (retryCount < 2 && (err.name === 'AbortError' || err.message.includes('fetch'))) {
         console.log(`🔄 Retrying session check (${retryCount + 1}/3)...`);
-        setTimeout(() => checkExistingSession(retryCount + 1), 1000 * (retryCount + 1));
+        setTimeout(() => checkExistingSession(retryCount + 1), 2000 * (retryCount + 1));
       } else {
         clearAuth();
       }
     }
   };
 
-  // FIXED: Enhanced token getter that returns the token for Web Playback SDK
+  // Enhanced token getter with caching and rate limiting
   const getStoredToken = async () => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(`${API_URL}/auth/token`, {
-        credentials: 'include',
-        headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {},
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.access_token && data.access_token !== accessToken) {
-          console.log('🔄 Got fresh token from server');
-          setAccessToken(data.access_token);
-        }
-        return data.access_token || accessToken;
-      } else {
-        console.error('Failed to get stored token:', response.status);
-      }
-    } catch (err) {
-      console.error('Failed to get stored token:', err);
+    const now = Date.now();
+    const cache = tokenCache.current;
+    
+    // Return cached token if it's still valid
+    if (cache.token && now < cache.expiresAt) {
+      return cache.token;
     }
-    return accessToken; // Return current token as fallback
+    
+    // If there's already a refresh in progress, wait for it
+    if (cache.refreshPromise) {
+      return await cache.refreshPromise;
+    }
+    
+    // Start token refresh
+    cache.refreshPromise = (async () => {
+      try {
+        await apiRateLimiter.waitIfNeeded();
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const response = await fetch(`${API_URL}/auth/token`, {
+          credentials: 'include',
+          headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {},
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.access_token) {
+            console.log('🔄 Got fresh token from server');
+            const newToken = data.access_token;
+            
+            // Update cache
+            tokenCache.current = {
+              token: newToken,
+              expiresAt: now + (50 * 60 * 1000), // 50 minutes
+              refreshPromise: null
+            };
+            
+            setAccessToken(newToken);
+            return newToken;
+          }
+        } else if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After') || 5;
+          apiRateLimiter.handleRateLimitError(parseInt(retryAfter));
+          // Return current token as fallback
+          return accessToken;
+        } else {
+          console.error('Failed to get stored token:', response.status);
+          throw new Error(`Token refresh failed: ${response.status}`);
+        }
+      } catch (err) {
+        console.error('Failed to refresh token:', err);
+        cache.refreshPromise = null;
+        throw err;
+      } finally {
+        cache.refreshPromise = null;
+      }
+    })();
+    
+    return await cache.refreshPromise || accessToken;
   };
 
-  // FIXED: Enhanced API fetch function with better error handling and retries
+  // Enhanced API request function with better rate limiting
   const apiRequest = useCallback(async (endpoint, options = {}) => {
     const url = endpoint.startsWith('http') ? endpoint : `${API_URL}${endpoint}`;
     
-    const makeRequest = async (token = null) => {
+    const makeRequest = async (token = null, attempt = 1) => {
       const headers = {
         'Content-Type': 'application/json',
         ...options.headers,
       };
 
-      // FIXED: Always include Authorization header if we have a token
       if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
@@ -268,16 +396,18 @@ export function AuthProvider({ children }) {
       const config = {
         ...options,
         headers,
-        credentials: 'include', // Always include cookies as fallback
+        credentials: 'include',
       };
 
-      console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`, {
+      console.log(`🌐 API Request: ${options.method || 'GET'} ${url} (attempt ${attempt})`, {
         hasToken: !!token,
         hasCredentials: true,
       });
 
+      await apiRateLimiter.waitIfNeeded();
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       try {
         const response = await fetch(url, {
@@ -286,6 +416,21 @@ export function AuthProvider({ children }) {
         });
         
         clearTimeout(timeoutId);
+        
+        // Handle rate limiting
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After') || 5;
+          apiRateLimiter.handleRateLimitError(parseInt(retryAfter));
+          
+          if (attempt < 3) {
+            console.log(`🔄 Rate limited, retrying in ${retryAfter}s...`);
+            await new Promise(resolve => setTimeout(resolve, parseInt(retryAfter) * 1000));
+            return makeRequest(token, attempt + 1);
+          } else {
+            throw new Error(`Rate limited after ${attempt} attempts`);
+          }
+        }
+        
         return response;
       } catch (fetchError) {
         clearTimeout(timeoutId);
@@ -300,19 +445,23 @@ export function AuthProvider({ children }) {
       // If we get 401 and we have an access token, try to refresh
       if (response.status === 401 && accessToken) {
         console.log('🔄 401 error with existing token, attempting refresh...');
-        const freshToken = await getStoredToken();
-        if (freshToken && freshToken !== accessToken) {
-          // Retry with fresh token
-          response = await makeRequest(freshToken);
+        try {
+          const freshToken = await getStoredToken();
+          if (freshToken && freshToken !== accessToken) {
+            response = await makeRequest(freshToken);
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+          // Continue with original response
         }
       }
       
-      // If still 401, handle auth error
+      // Handle auth errors
       if (response.status === 401) {
         const errorData = await response.json().catch(() => ({}));
         if (errorData.reauth_required) {
-          console.log('🔄 Re-authentication required, redirecting...');
-          handleAuthError(new Error('reauth_required'), 'apiRequest');
+          console.log('🔄 Re-authentication required');
+          handleAuthError({ status: 401, message: 'reauth_required' }, 'apiRequest');
         }
       }
       
@@ -320,7 +469,6 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error('🚨 API Request failed:', error);
       
-      // Handle network errors gracefully
       if (error.name === 'AbortError') {
         throw new Error('Request timed out');
       } else if (!navigator.onLine) {
@@ -333,10 +481,8 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      await fetch(`${API_URL}/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}
+      await apiRequest('/auth/logout', {
+        method: 'POST'
       });
     } catch (err) {
       console.error('Logout error:', err);
@@ -345,24 +491,41 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // FIXED: Method to get fresh token for Web Playback SDK
+  // Enhanced getFreshToken for Web Playback SDK
   const getFreshToken = useCallback(async () => {
-    if (accessToken) {
-      // First try to use current token
+    const now = Date.now();
+    const cache = tokenCache.current;
+    
+    // If we have a cached valid token, return it
+    if (cache.token && now < cache.expiresAt) {
+      return cache.token;
+    }
+    
+    // If current accessToken is recent, validate it first
+    if (accessToken && now < cache.expiresAt) {
       try {
+        await apiRateLimiter.waitIfNeeded();
         const response = await fetch('https://api.spotify.com/v1/me', {
           headers: { Authorization: `Bearer ${accessToken}` }
         });
         if (response.ok) {
           return accessToken;
+        } else if (response.status === 429) {
+          // Rate limited but token might still be valid
+          return accessToken;
         }
       } catch (err) {
-        console.log('Current token validation failed, getting fresh token...');
+        console.log('Token validation failed, getting fresh token...', err.message);
       }
     }
     
     // Get fresh token from server
-    return await getStoredToken();
+    try {
+      return await getStoredToken();
+    } catch (err) {
+      console.error('Failed to get fresh token:', err);
+      return accessToken; // Fallback to current token
+    }
   }, [accessToken]);
 
   const value = {
@@ -372,8 +535,7 @@ export function AuthProvider({ children }) {
     accessToken,
     logout,
     apiRequest,
-    getFreshToken, // FIXED: Expose for Web Playback SDK
-    // FIXED: Add method to manually trigger re-authentication
+    getFreshToken,
     forceReauth: () => {
       console.log('🔄 Force re-authentication triggered');
       clearAuth();
