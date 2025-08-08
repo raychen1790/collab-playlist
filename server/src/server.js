@@ -1,19 +1,14 @@
-// server/src/server.js - FIXED VERSION without wildcards to avoid path-to-regexp errors
+// server/src/server.js - API-only server for separate frontend/backend deployments
 import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/auth.js';
 import roomsRoutes from './routes/rooms.js';
 import votesRoutes from './routes/votes.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const isProd = process.env.NODE_ENV === 'production';
 const FRONTEND = process.env.FRONTEND_URI;
@@ -26,13 +21,17 @@ const allowed = new Set([
   'http://127.0.0.1:5173',
   'http://localhost:5173',
   FRONTEND,
+  'https://collab-playlist.vercel.app', // Add your actual Vercel URL
 ].filter(Boolean));
 
 const corsOptions = {
   origin(origin, cb) {
     // allow non-browser tools (curl/postman) with no origin
     if (!origin) return cb(null, true);
-    cb(null, allowed.has(origin));
+    console.log('🔍 CORS check for origin:', origin);
+    const allowed_result = allowed.has(origin);
+    console.log('✅ CORS allowed:', allowed_result);
+    cb(null, allowed_result);
   },
   credentials: true,
 };
@@ -41,95 +40,53 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET));
 
-// IMPORTANT: API routes MUST come before static file serving
+// API routes only - no static file serving
 app.use('/auth', authRoutes);
 app.use('/api/rooms', roomsRoutes);
 app.use('/api/rooms', votesRoutes);
 
-app.get('/health', (_req, res) => res.send('ok'));
+app.get('/health', (_req, res) => res.send('Backend API is healthy'));
 
-// FIXED: Production static file serving and SPA routing WITHOUT wildcards
-if (isProd) {
-  const clientBuildPath = path.join(__dirname, '../../client/dist');
-  
-  console.log('📦 Serving static files from:', clientBuildPath);
-  
-  // Serve static files
-  app.use(express.static(clientBuildPath));
-  
-  // FIXED: Define explicit routes for your SPA (no wildcards)
-  const spaRoutes = [
-    '/',
-    '/rooms/:id'  // This matches /rooms/139113a6-dc93-453f-9fd3-461e7f00df81
-  ];
-  
-  // Register each SPA route explicitly
-  spaRoutes.forEach(route => {
-    app.get(route, (req, res) => {
-      const indexPath = path.join(clientBuildPath, 'index.html');
-      console.log(`🔄 SPA routing: ${req.path} -> index.html`);
-      res.sendFile(indexPath, (err) => {
-        if (err) {
-          console.error('❌ Error serving index.html:', err);
-          res.status(500).json({ error: 'Internal server error' });
-        }
-      });
-    });
+// Root endpoint to confirm API is running
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Collab Playlist API Server',
+    status: 'running',
+    environment: process.env.NODE_ENV,
+    frontend_url: FRONTEND,
+    timestamp: new Date().toISOString()
   });
-  
-  // FIXED: Use middleware for catch-all instead of app.get('*')
-  app.use((req, res, next) => {
-    // Skip API requests - let them 404 properly
-    if (req.path.startsWith('/api/') || 
-        req.path.startsWith('/auth/') || 
-        req.path === '/health') {
-      return next();
-    }
-    
-    // Skip requests for static assets with extensions (except .html)
-    const ext = path.extname(req.path);
-    if (ext && !['.html', ''].includes(ext)) {
-      return next();
-    }
-    
-    // For everything else, serve index.html (SPA catch-all)
-    const indexPath = path.join(clientBuildPath, 'index.html');
-    console.log(`🔄 SPA catch-all: ${req.method} ${req.path} -> index.html`);
-    
-    res.sendFile(indexPath, (err) => {
-      if (err) {
-        console.error('❌ Error serving index.html:', err);
-        res.status(500).json({ error: 'Internal server error' });
-      }
-    });
+});
+
+// 404 handler for undefined API routes
+app.use((req, res) => {
+  console.log(`❌ 404: ${req.method} ${req.path}`);
+  res.status(404).json({ 
+    error: 'API endpoint not found',
+    method: req.method,
+    path: req.path,
+    available_endpoints: [
+      'GET /',
+      'GET /health',
+      'GET /auth/*',
+      'POST /auth/*',
+      'GET /api/rooms/*',
+      'POST /api/rooms/*'
+    ]
   });
-  
-  // Final 404 handler
-  app.use((req, res) => {
-    console.log(`❌ 404: ${req.method} ${req.path}`);
-    res.status(404).json({ error: 'Not found' });
-  });
-  
-} else {
-  // Development mode
-  console.log('🔧 Development mode - client served by Vite dev server');
-}
+});
 
 const PORT = process.env.PORT || 4000;
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
-  console.log(`📡 Frontend URI: ${FRONTEND}`);
+  console.log(`🚀 API Server listening on port ${PORT}`);
+  console.log(`📡 Frontend URL: ${FRONTEND}`);
   console.log(`🔧 Environment: ${process.env.NODE_ENV}`);
-  console.log(`📂 Serving from: ${isProd ? 'static files' : 'development mode'}`);
+  console.log(`🌐 CORS allowed origins:`, Array.from(allowed));
+  console.log(`🔗 This is an API-only server - frontend served separately`);
 });
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down server...');
-  process.exit(0);
-});
-
+// Error handling
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
