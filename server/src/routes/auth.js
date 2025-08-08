@@ -1,4 +1,4 @@
-// server/routes/auth.js - Enhanced with better dual auth support
+// server/routes/auth.js - Enhanced with better dual auth support and 404 fix
 import express from 'express';
 import axios from 'axios';
 import querystring from 'querystring';
@@ -158,27 +158,35 @@ router.get('/callback', async (req, res) => {
 router.post('/store-tokens', async (req, res) => {
   const { access_token, refresh_token, expires_in } = req.body;
   
+  // FIXED: Also check Authorization header
+  const authHeader = req.headers.authorization;
+  const headerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const tokenToVerify = access_token || headerToken;
+  
   console.log('👉 POST /auth/store-tokens');
-  console.log('    has access_token:', !!access_token);
+  console.log('    has access_token in body:', !!access_token);
+  console.log('    has access_token in header:', !!headerToken);
   console.log('    has refresh_token:', !!refresh_token);
 
-  if (!access_token) {
+  if (!tokenToVerify) {
     return res.status(400).json({ error: 'Missing access token' });
   }
 
   try {
     // Verify the token before storing
     const profile = await axios.get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${access_token}` }
+      headers: { Authorization: `Bearer ${tokenToVerify}` }
     });
 
-    // Store in cookies
-    const accessTokenCookieOptions = getCookieOptions(expires_in * 1000);
-    res.cookie('spotify_token', access_token, accessTokenCookieOptions);
-    
-    if (refresh_token) {
-      const refreshTokenCookieOptions = getCookieOptions(30 * 24 * 3600 * 1000);
-      res.cookie('refresh_token', refresh_token, refreshTokenCookieOptions);
+    // Store in cookies (use the token from body if available, otherwise header)
+    if (access_token) {
+      const accessTokenCookieOptions = getCookieOptions(expires_in * 1000);
+      res.cookie('spotify_token', access_token, accessTokenCookieOptions);
+      
+      if (refresh_token) {
+        const refreshTokenCookieOptions = getCookieOptions(30 * 24 * 3600 * 1000);
+        res.cookie('refresh_token', refresh_token, refreshTokenCookieOptions);
+      }
     }
 
     console.log('✅ Tokens stored successfully for user:', profile.data.display_name);
@@ -213,19 +221,32 @@ router.get('/me', async (req, res) => {
   
   try {
     const response = await axios.get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 5000 // FIXED: Add timeout
     });
     
     console.log('    ✅ authenticated as:', response.data.display_name);
     res.json({ user: response.data });
     
   } catch (err) {
-    console.log('    ❌ token invalid:', err.response?.status);
+    console.log('    ❌ token invalid:', err.response?.status || err.message);
+    
+    // FIXED: If header token failed but we have cookies, try to refresh
+    if (authHeader && req.signedCookies.refresh_token) {
+      console.log('    🔄 Header token failed, attempting cookie-based refresh...');
+      return ensureSpotifyToken(req, res, () => {
+        if (req.user) {
+          return res.json({ user: req.user });
+        }
+        return res.json({ user: null });
+      });
+    }
+    
     res.json({ user: null });
   }
 });
 
-// 5. Enhanced token endpoint for Web Playback SDK
+// 5. Enhanced token endpoint for Web Playback SDK with better error handling
 router.get('/token', async (req, res) => {
   console.log('👉 GET /auth/token');
   
@@ -244,7 +265,10 @@ router.get('/token', async (req, res) => {
       
       if (!cookieToken) {
         console.log('   ↳ no cookie token available');
-        return res.status(401).json({ error: 'No access token available' });
+        return res.status(401).json({ 
+          error: 'No access token available',
+          reauth_required: true 
+        });
       }
       
       console.log('   ↳ cookie token verified for user:', user?.display_name);
@@ -257,18 +281,52 @@ router.get('/token', async (req, res) => {
   
   // Verify header token
   try {
-    const response = await axios.get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${token}` }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal
     });
     
-    console.log('   ↳ header token verified for user:', response.data.display_name);
-    res.json({ 
-      access_token: token,
-      user: response.data
-    });
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      const userData = await response.json();
+      console.log('   ↳ header token verified for user:', userData.display_name);
+      res.json({ 
+        access_token: token,
+        user: userData
+      });
+    } else {
+      throw new Error(`Token verification failed: ${response.status}`);
+    }
     
   } catch (err) {
-    console.error('   ↳ header token verification failed:', err.response?.status, err.response?.data?.error?.message || err.message);
+    console.error('   ↳ header token verification failed:', err.message);
+    
+    // FIXED: If header token failed but we have cookies, try to refresh
+    if (req.signedCookies.refresh_token) {
+      console.log('   🔄 Header token failed, attempting cookie-based refresh...');
+      return ensureSpotifyToken(req, res, () => {
+        const cookieToken = req.spotifyAccessToken;
+        const user = req.user;
+        
+        if (!cookieToken) {
+          return res.status(401).json({ 
+            error: 'No access token available after refresh attempt',
+            reauth_required: true 
+          });
+        }
+        
+        console.log('   ↳ cookie refresh successful for user:', user?.display_name);
+        res.json({ 
+          access_token: cookieToken,
+          user: user
+        });
+      });
+    }
+    
     res.status(401).json({ 
       error: 'Invalid access token',
       reauth_required: true

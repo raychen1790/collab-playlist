@@ -1,4 +1,4 @@
-// client/src/hooks/useSpotifyWebPlayback.js - FIXED VERSION
+// client/src/hooks/useSpotifyWebPlayback.js - FIXED VERSION with better token handling
 import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 
@@ -12,11 +12,11 @@ export function useSpotifyWebPlayback() {
   const [playerState, setPlayerState] = useState(null);
   const [volume, setVolume] = useState(0.5);
   const [error, setError] = useState(null);
-  const [accessToken, setAccessToken] = useState(null);
   
   const playerRef = useRef(null);
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+  const tokenRef = useRef(null); // FIXED: Store current token
   
   // FIXED: Real-time position tracking
   const positionUpdateIntervalRef = useRef(null);
@@ -24,46 +24,46 @@ export function useSpotifyWebPlayback() {
   const lastUpdateTimeRef = useRef(Date.now());
   const isPlayingRef = useRef(false);
 
-  // Use AuthContext for enhanced API requests
-  const { apiRequest, accessToken: contextAccessToken } = useContext(AuthContext);
+  // Use AuthContext for enhanced API requests and token management
+  const { apiRequest, accessToken, getFreshToken } = useContext(AuthContext);
 
-  // Fetch access token from backend using AuthContext
-  const fetchAccessToken = useCallback(async () => {
-    console.log('🔍 Fetching token via AuthContext');
-    
-    try {
-      const response = await apiRequest('/auth/token');
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Successfully fetched access token via AuthContext');
-        setAccessToken(data.access_token);
-        return data.access_token;
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Failed to get access token:', response.status, errorData);
-        
-        if (errorData.reauth_required) {
-          setError('Please re-authenticate with Spotify to get the required permissions');
-        } else {
-          setError(`Failed to get access token: ${errorData.error || 'Unknown error'}`);
+  // FIXED: Better token management
+  useEffect(() => {
+    if (accessToken) {
+      tokenRef.current = accessToken;
+      console.log('🔍 Token updated in Web Playback hook');
+    }
+  }, [accessToken]);
+
+  // FIXED: Token getter that always returns a valid token
+  const getValidToken = useCallback(async () => {
+    // Try current token first
+    if (tokenRef.current) {
+      try {
+        const response = await fetch('https://api.spotify.com/v1/me', {
+          headers: { Authorization: `Bearer ${tokenRef.current}` }
+        });
+        if (response.ok) {
+          return tokenRef.current;
         }
-        return null;
+      } catch (err) {
+        console.log('Current token invalid, getting fresh one...');
+      }
+    }
+
+    // Get fresh token from AuthContext
+    try {
+      const freshToken = await getFreshToken();
+      if (freshToken) {
+        tokenRef.current = freshToken;
+        return freshToken;
       }
     } catch (err) {
-      console.error('❌ Failed to fetch access token:', err);
-      setError('Failed to get Spotify access token - please try logging in again');
-      return null;
+      console.error('Failed to get fresh token:', err);
     }
-  }, [apiRequest]);
 
-  // Also try to use token from AuthContext if available
-  useEffect(() => {
-    if (contextAccessToken && !accessToken) {
-      console.log('🔍 Using token from AuthContext');
-      setAccessToken(contextAccessToken);
-    }
-  }, [contextAccessToken, accessToken]);
+    throw new Error('No valid token available');
+  }, [getFreshToken]);
 
   // Load Spotify Web Playback SDK script
   const loadSpotifyScript = useCallback(() => {
@@ -163,10 +163,11 @@ export function useSpotifyWebPlayback() {
     }
   }, []);
 
-  const checkActiveDevice = useCallback(async (token = accessToken, deviceIdToCheck = deviceId) => {
-    if (!token || !deviceIdToCheck) return false;
+  const checkActiveDevice = useCallback(async (deviceIdToCheck = deviceId) => {
+    if (!deviceIdToCheck) return false;
 
     try {
+      const token = await getValidToken();
       const response = await fetch('https://api.spotify.com/v1/me/player', {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -198,18 +199,27 @@ export function useSpotifyWebPlayback() {
       }
     } catch (err) {
       console.error('Error checking active device:', err);
+      return false;
     }
-    return false;
-  }, [startPositionUpdates, stopPositionUpdates]);
+  }, [deviceId, getValidToken, startPositionUpdates, stopPositionUpdates]);
 
-  const initializePlayer = useCallback(async (token) => {
+  // FIXED: Initialize player with proper token handling
+  const initializePlayer = useCallback(async () => {
     try {
       const spotify = await loadSpotifyScript();
+      const token = await getValidToken();
       
       const spotifyPlayer = new spotify.Player({
         name: SPOTIFY_PLAYER_NAME,
-        getOAuthToken: (cb) => {
-          cb(token);
+        getOAuthToken: async (cb) => {
+          try {
+            // FIXED: Always get a fresh token when Spotify requests it
+            const freshToken = await getValidToken();
+            cb(freshToken);
+          } catch (err) {
+            console.error('Failed to get token for Spotify Player:', err);
+            setError('Authentication failed. Please log in again.');
+          }
         },
         volume: 0.5
       });
@@ -275,7 +285,7 @@ export function useSpotifyWebPlayback() {
         retryCountRef.current = 0;
         
         setTimeout(() => {
-          checkActiveDevice(token, device_id);
+          checkActiveDevice(device_id);
         }, 1000);
       });
 
@@ -304,27 +314,19 @@ export function useSpotifyWebPlayback() {
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++;
         console.log(`Retrying initialization (${retryCountRef.current}/${maxRetries})...`);
-        setTimeout(() => initializePlayer(token), 2000);
+        setTimeout(() => initializePlayer(), 2000);
       }
     }
-  }, [loadSpotifyScript, startPositionUpdates, stopPositionUpdates, checkActiveDevice]);
+  }, [loadSpotifyScript, getValidToken, startPositionUpdates, stopPositionUpdates, checkActiveDevice]);
 
+  // FIXED: Initialize when we have access token
   useEffect(() => {
     let mounted = true;
 
-    const init = async () => {
-      let token = contextAccessToken;
-      
-      if (!token) {
-        token = await fetchAccessToken();
-      }
-      
-      if (token && mounted) {
-        await initializePlayer(token);
-      }
-    };
-
-    init();
+    if (accessToken && mounted) {
+      console.log('🔍 Access token available, initializing player...');
+      initializePlayer();
+    }
 
     return () => {
       mounted = false;
@@ -333,31 +335,32 @@ export function useSpotifyWebPlayback() {
         playerRef.current.disconnect();
       }
     };
-  }, [contextAccessToken, fetchAccessToken, initializePlayer, stopPositionUpdates]);
+  }, [accessToken, initializePlayer, stopPositionUpdates]);
 
   useEffect(() => {
-    if (!isReady || !deviceId || !accessToken) return;
+    if (!isReady || !deviceId) return;
 
     const interval = setInterval(() => {
-      checkActiveDevice(accessToken, deviceId);
+      checkActiveDevice(deviceId);
     }, 10000);
     
     return () => clearInterval(interval);
-  }, [isReady, deviceId, accessToken, checkActiveDevice]);
+  }, [isReady, deviceId, checkActiveDevice]);
 
   const transferPlayback = useCallback(async () => {
-    if (!deviceId || !accessToken) {
-      console.error('Cannot transfer playback: missing deviceId or accessToken');
+    if (!deviceId) {
+      console.error('Cannot transfer playback: missing deviceId');
       return false;
     }
 
     console.log('Attempting to transfer playback to device:', deviceId);
 
     try {
+      const token = await getValidToken();
       const response = await fetch('https://api.spotify.com/v1/me/player', {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -370,12 +373,12 @@ export function useSpotifyWebPlayback() {
         console.log('Transfer playback request successful');
         
         setTimeout(async () => {
-          const isActive = await checkActiveDevice(accessToken, deviceId);
+          const isActive = await checkActiveDevice(deviceId);
           if (isActive) {
             console.log('Successfully transferred playback to our device');
           } else {
             console.log('Transfer request sent but device not yet active, checking again...');
-            setTimeout(() => checkActiveDevice(accessToken, deviceId), 2000);
+            setTimeout(() => checkActiveDevice(deviceId), 2000);
           }
         }, 1000);
         
@@ -391,12 +394,12 @@ export function useSpotifyWebPlayback() {
       setError(`Error transferring playback: ${err.message}`);
       return false;
     }
-  }, [deviceId, accessToken, checkActiveDevice]);
+  }, [deviceId, getValidToken, checkActiveDevice]);
 
-  // FIXED: Better playTrack function
+  // FIXED: Better playTrack function with improved token handling
   const playTrack = useCallback(async (spotifyUri, positionMs = 0) => {
-    if (!player || !deviceId || !accessToken) {
-      console.error('Player not ready or missing token/deviceId');
+    if (!player || !deviceId) {
+      console.error('Player not ready or missing deviceId');
       return false;
     }
 
@@ -415,10 +418,11 @@ export function useSpotifyWebPlayback() {
     await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
+      const token = await getValidToken();
       const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -443,7 +447,7 @@ export function useSpotifyWebPlayback() {
       setError(`Error playing track: ${err.message}`);
       return false;
     }
-  }, [player, deviceId, accessToken, isActive, transferPlayback, startPositionUpdates]);
+  }, [player, deviceId, isActive, transferPlayback, startPositionUpdates, getValidToken]);
 
   // FIXED: Proper toggle play function
   const togglePlay = useCallback(async () => {
@@ -514,7 +518,7 @@ export function useSpotifyWebPlayback() {
     playerState,
     volume,
     error,
-    accessToken,
+    accessToken: tokenRef.current, // FIXED: Return current token
     
     playTrack,
     togglePlay,
