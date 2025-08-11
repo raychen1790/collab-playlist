@@ -1,4 +1,4 @@
-// client/src/hooks/useMusicPlayer.js - FIXED VERSION
+// client/src/hooks/useMusicPlayer.js
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSpotifyWebPlayback } from './useSpotifyWebPlayback.js';
 
@@ -7,12 +7,21 @@ export function useMusicPlayer(tracks, sortMode) {
   const [shuffleMode, setShuffleMode] = useState(false);
   const [playQueue, setPlayQueue] = useState([]);
   const [originalQueue, setOriginalQueue] = useState([]);
-  
-  // FIXED: Better rate limiting and track end detection
+
+  // Smooth progress
+  const [positionMs, setPositionMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(0);
+
+  // Guards
   const lastTrackEndTime = useRef(0);
   const isChangingTracks = useRef(false);
   const trackEndDetectionRef = useRef(null);
   const lastProcessedTrack = useRef(null);
+  const prevSpotifyTrackId = useRef(null);
+
+  // Ignore end-detection right after user actions
+  const userActionRef = useRef({ pausedAt: 0, soughtAt: 0 });
+  const IGNORE_AFTER_USER_ACTION_MS = 1500;
 
   const {
     isReady: spotifyReady,
@@ -27,398 +36,357 @@ export function useMusicPlayer(tracks, sortMode) {
     currentTrack: spotifyCurrentTrack,
     transferPlayback,
     setVolume,
-    seek,
+    seek: sdkSeek,
+    // exposed by the web playback hook for Safari/iOS
+    activateAudio,
   } = useSpotifyWebPlayback();
 
-  console.log('🎯 useMusicPlayer Debug:', {
-    currentQueueIndex,
-    playQueueLength: playQueue.length,
-    tracksLength: tracks.length,
-    spotifyCurrentTrack: spotifyCurrentTrack?.name,
-    isPlaying,
-    shuffleMode,
-    currentTrackInQueue: playQueue[currentQueueIndex],
-    position: playerState?.position,
-    duration: playerState?.duration,
-    isChangingTracks: isChangingTracks.current
-  });
+  // ===== Debug =====
+  // console.log('🎯 useMusicPlayer Debug:', {
+  //   currentQueueIndex,
+  //   playQueueLength: playQueue.length,
+  //   tracksLength: tracks.length,
+  //   spotifyCurrentTrack: spotifyCurrentTrack?.name,
+  //   isPlaying,
+  //   shuffleMode,
+  //   currentTrackInQueue: playQueue[currentQueueIndex],
+  //   positionMs,
+  //   durationMs,
+  //   isChangingTracks: isChangingTracks.current
+  // });
 
+  /* ----------------- derived lists ----------------- */
   const playableTracks = useMemo(() => {
-    const filtered = tracks.filter(track => track.spotifyId);
-    console.log('🎵 Playable tracks:', filtered.length, 'of', tracks.length);
-    return filtered;
+    return tracks.filter(t => t.spotifyId);
   }, [tracks]);
 
   const currentTrack = useMemo(() => {
+    // Prefer the SDK's notion of the current track when available
     if (spotifyCurrentTrack && spotifyCurrentTrack.id) {
-      const matchedTrack = playableTracks.find(track => 
-        track.spotifyId === spotifyCurrentTrack.id
-      );
-      if (matchedTrack) {
-        console.log('✅ Matched Spotify track with our data:', matchedTrack.title);
-        return matchedTrack;
-      } else {
-        console.log('⚠️ Spotify track not found in our data:', spotifyCurrentTrack.name);
-        return {
-          title: spotifyCurrentTrack.name,
-          artist: spotifyCurrentTrack.artists.map(a => a.name).join(', '),
-          albumArt: spotifyCurrentTrack.album.images[0]?.url,
-          spotifyId: spotifyCurrentTrack.id,
-          trackId: null,
-          score: 0
-        };
-      }
+      const matched = playableTracks.find(t => t.spotifyId === spotifyCurrentTrack.id);
+      if (matched) return matched;
+      // Fallback "synthetic" track for UI cohesion
+      return {
+        title: spotifyCurrentTrack.name,
+        artist: spotifyCurrentTrack.artists?.map(a => a.name).join(', '),
+        albumArt: spotifyCurrentTrack.album?.images?.[0]?.url,
+        spotifyId: spotifyCurrentTrack.id,
+        trackId: null,
+        score: 0,
+      };
     }
-    
-    const trackIndex = playQueue[currentQueueIndex];
-    const queueTrack = trackIndex !== undefined ? playableTracks[trackIndex] : null;
-    console.log('🔄 Using queue-based current track:', queueTrack?.title || 'None');
-    return queueTrack;
+    // Otherwise fall back to our queue
+    const idx = playQueue[currentQueueIndex];
+    return idx !== undefined ? playableTracks[idx] : null;
   }, [playableTracks, currentQueueIndex, spotifyCurrentTrack, playQueue]);
 
+  /* ----------------- queue init ----------------- */
   const initializeQueue = useCallback(() => {
     if (playableTracks.length === 0) return;
-    
-    const indices = playableTracks.map((_, index) => index);
-    setOriginalQueue([...indices]);
-    
-    if (playQueue.length === 0) {
-      setPlayQueue([...indices]);
-    }
-    
-    if (currentQueueIndex >= playableTracks.length) {
-      setCurrentQueueIndex(0);
-    }
-    
-    console.log('🔄 Queue initialized:', indices.length, 'tracks');
-  }, [playableTracks.length]);
 
+    const indices = playableTracks.map((_, i) => i);
+    setOriginalQueue(indices);
+
+    if (playQueue.length === 0) setPlayQueue(indices);
+
+    if (currentQueueIndex >= indices.length) setCurrentQueueIndex(0);
+  }, [playableTracks.length, playQueue.length, currentQueueIndex]);
+
+  useEffect(() => {
+    if (playableTracks.length > 0) initializeQueue();
+  }, [playableTracks.length, initializeQueue]);
+
+  /* ----------------- shuffle helper ----------------- */
   const createWeightedShuffle = useCallback((excludeTrackIndex = null) => {
     if (playableTracks.length === 0) return [];
 
-    const trackIndices = playableTracks.map((_, index) => index);
-    
-    const availableIndices = excludeTrackIndex !== null 
-      ? trackIndices.filter(index => index !== excludeTrackIndex)
-      : [...trackIndices];
+    const idxs = playableTracks.map((_, i) => i);
+    const avail = excludeTrackIndex !== null ? idxs.filter(i => i !== excludeTrackIndex) : [...idxs];
+    if (avail.length === 0) return excludeTrackIndex !== null ? [excludeTrackIndex] : [];
 
-    if (availableIndices.length === 0) return excludeTrackIndex !== null ? [excludeTrackIndex] : [];
+    const weights = avail.map((i) => {
+      const t = playableTracks[i];
+      let w = 1;
 
-    const weights = availableIndices.map((trackIndex) => {
-      const track = playableTracks[trackIndex];
-      let weight = 1;
-      
-      const normalizedVotes = Math.max(0, track.score + 5);
-      weight *= Math.pow(normalizedVotes + 1, 1.2);
+      // vote weight
+      const normalizedVotes = Math.max(0, (t.score ?? 0) + 5);
+      w *= Math.pow(normalizedVotes + 1, 1.2);
 
-      if (sortMode === 'tempo' && track.tempo != null) {
-        weight *= (track.tempo / 120) + 0.5;
-      } else if (sortMode === 'energy' && track.energy != null) {
-        weight *= track.energy + 0.2;
-      } else if (sortMode === 'dance' && track.danceability != null) {
-        weight *= track.danceability + 0.2;
+      // sort-mode nudges
+      if (sortMode === 'tempo' && t.tempo != null) {
+        w *= (t.tempo / 120) + 0.5;
+      } else if (sortMode === 'energy' && t.energy != null) {
+        w *= t.energy + 0.2;
+      } else if (sortMode === 'dance' && t.danceability != null) {
+        w *= t.danceability + 0.2;
       }
 
-      return Math.max(0.1, weight);
+      return Math.max(0.1, w);
     });
 
     const shuffled = [];
-    const workingIndices = [...availableIndices];
-    const workingWeights = [...weights];
+    const workIdx = [...avail];
+    const workW = [...weights];
 
-    const highVoteTracks = workingIndices.filter(i => playableTracks[i].score > 3);
-    if (highVoteTracks.length > 0 && Math.random() < 0.7) {
-      const randomHighVote = highVoteTracks[Math.floor(Math.random() * highVoteTracks.length)];
-      const indexInWorking = workingIndices.indexOf(randomHighVote);
-      shuffled.push(workingIndices[indexInWorking]);
-      workingIndices.splice(indexInWorking, 1);
-      workingWeights.splice(indexInWorking, 1);
+    // Bias toward a highly upvoted track occasionally
+    const highVote = workIdx.filter(i => (playableTracks[i].score ?? 0) > 3);
+    if (highVote.length && Math.random() < 0.7) {
+      const pick = highVote[Math.floor(Math.random() * highVote.length)];
+      const j = workIdx.indexOf(pick);
+      shuffled.push(workIdx[j]);
+      workIdx.splice(j, 1);
+      workW.splice(j, 1);
     }
 
-    while (workingIndices.length > 0) {
-      const totalWeight = workingWeights.reduce((sum, w) => sum + w, 0);
-      let random = Math.random() * totalWeight;
-      
-      let selectedIndex = 0;
-      for (let i = 0; i < workingWeights.length; i++) {
-        random -= workingWeights[i];
-        if (random <= 0) {
-          selectedIndex = i;
-          break;
-        }
+    while (workIdx.length) {
+      const total = workW.reduce((s, x) => s + x, 0);
+      let r = Math.random() * total;
+      let k = 0;
+      for (let i = 0; i < workW.length; i++) {
+        r -= workW[i];
+        if (r <= 0) { k = i; break; }
       }
-
-      shuffled.push(workingIndices[selectedIndex]);
-      workingIndices.splice(selectedIndex, 1);
-      workingWeights.splice(selectedIndex, 1);
+      shuffled.push(workIdx[k]);
+      workIdx.splice(k, 1);
+      workW.splice(k, 1);
     }
 
-    const finalQueue = excludeTrackIndex !== null ? [excludeTrackIndex, ...shuffled] : shuffled;
-    
-    console.log('🔀 Created weighted shuffle:', finalQueue.length, 'tracks');
-    return finalQueue;
+    return excludeTrackIndex !== null ? [excludeTrackIndex, ...shuffled] : shuffled;
   }, [playableTracks, sortMode]);
 
-  // FIXED: Improved play function with better error handling
-  const play = useCallback(async (trackIndex = null) => {
-    if (playableTracks.length === 0 || !spotifyReady || isChangingTracks.current) {
-      console.log('❌ Cannot play: no tracks, Spotify not ready, or already changing tracks');
-      return false;
+  /* ----------------- play / pause / transport ----------------- */
+
+  // Helper: make sure audio is activated (Safari), transfer to our device if needed, then play
+  const ensureReadyThenPlay = useCallback(async (targetTrackIndex) => {
+    if (!spotifyReady) return false;
+
+    try { if (typeof activateAudio === 'function') await activateAudio(); } catch {}
+
+    // If device isn’t active yet, transfer and wait briefly
+    if (!spotifyActive) {
+      await transferPlayback();
+      await new Promise(r => setTimeout(r, 800));
     }
 
-    isChangingTracks.current = true;
+    // Kick playback
+    const track = playableTracks[targetTrackIndex];
+    if (!track?.spotifyId) return false;
 
+    const uri = `spotify:track:${track.spotifyId}`;
+    const ok = await playSpotifyTrack(uri);
+    if (ok) return true;
+
+    // Retry once after a short wait (helps right after transfer)
+    await new Promise(r => setTimeout(r, 600));
+    return await playSpotifyTrack(uri);
+  }, [spotifyReady, spotifyActive, activateAudio, transferPlayback, playableTracks, playSpotifyTrack]);
+
+  const play = useCallback(async (trackIndex = null) => {
+    if (!spotifyReady || playableTracks.length === 0 || isChangingTracks.current) return false;
+
+    isChangingTracks.current = true;
     try {
-      // If no specific track index and we have a current track, just resume
+      // Resume if we already have a track selected
       if (trackIndex === null && currentTrack && !isPlaying) {
-        console.log('▶️ Resuming current track');
         await toggleSpotifyPlay();
         return true;
       }
-    
-      let targetTrackIndex = trackIndex !== null ? trackIndex : playQueue[currentQueueIndex];
-      const targetTrack = playableTracks[targetTrackIndex];
-      
-      if (!targetTrack) {
-        console.log('❌ Cannot play: no target track at index', targetTrackIndex);
-        return false;
-      }
 
-      console.log('▶️ Playing track:', targetTrack.title, 'at track index', targetTrackIndex);
+      const targetTrackIndex =
+        trackIndex !== null ? trackIndex : playQueue[currentQueueIndex];
 
-      // FIXED: Ensure device is active before playing
-      if (!spotifyActive) {
-        console.log('🔄 Device not active, transferring playback...');
-        await transferPlayback();
-        // Wait for activation
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 500)); // Rate limiting
-
-      const spotifyUri = `spotify:track:${targetTrack.spotifyId}`;
-      const success = await playSpotifyTrack(spotifyUri);
-      
-      console.log('🎵 Playback result:', success ? 'SUCCESS' : 'FAILED');
-      return success;
-      
+      const ok = await ensureReadyThenPlay(targetTrackIndex);
+      return ok;
     } finally {
-      setTimeout(() => {
-        isChangingTracks.current = false;
-      }, 1000);
+      setTimeout(() => { isChangingTracks.current = false; }, 600);
     }
-  }, [playableTracks, spotifyReady, spotifyActive, currentQueueIndex, playQueue, playSpotifyTrack, currentTrack, isPlaying, toggleSpotifyPlay, transferPlayback]);
+  }, [spotifyReady, playableTracks.length, currentTrack, isPlaying, toggleSpotifyPlay, playQueue, currentQueueIndex, ensureReadyThenPlay]);
 
   const pause = useCallback(async () => {
-    if (spotifyReady && !isChangingTracks.current) {
-      console.log('⏸️ Pausing playback');
-      await toggleSpotifyPlay();
-    }
+    if (!spotifyReady || isChangingTracks.current) return;
+    userActionRef.current.pausedAt = Date.now();
+    await toggleSpotifyPlay();
   }, [spotifyReady, toggleSpotifyPlay]);
 
-  // FIXED: Better next function with proper queue management
   const next = useCallback(async () => {
-    if (playableTracks.length === 0 || playQueue.length === 0 || isChangingTracks.current) {
-      console.log('❌ Cannot go to next: no tracks, empty queue, or already changing');
-      return;
-    }
-
-    console.log('⏭️ Next track - current queue index:', currentQueueIndex, 'queue length:', playQueue.length);
-    
-    let nextQueueIndex = currentQueueIndex + 1;
-    
-    if (nextQueueIndex < playQueue.length) {
-      const nextTrackIndex = playQueue[nextQueueIndex];
-      console.log('⏭️ Playing next track at queue index:', nextQueueIndex, 'track index:', nextTrackIndex);
-      setCurrentQueueIndex(nextQueueIndex);
-      await play(nextTrackIndex);
+    if (playableTracks.length === 0 || playQueue.length === 0 || isChangingTracks.current) return;
+    const nextIdx = currentQueueIndex + 1;
+    if (nextIdx < playQueue.length) {
+      setCurrentQueueIndex(nextIdx);
+      await play(playQueue[nextIdx]);
     } else {
-      console.log('⏭️ End of queue reached, looping back to start');
       setCurrentQueueIndex(0);
       await play(playQueue[0]);
     }
   }, [playableTracks.length, playQueue, currentQueueIndex, play]);
 
   const previous = useCallback(async () => {
-    if (playableTracks.length === 0 || playQueue.length === 0 || isChangingTracks.current) {
-      console.log('❌ Cannot go to previous: no tracks, empty queue, or already changing');
-      return;
-    }
-
-    console.log('⏮️ Previous track - current queue index:', currentQueueIndex);
-
-    let prevQueueIndex = currentQueueIndex - 1;
-    
-    if (prevQueueIndex >= 0) {
-      const prevTrackIndex = playQueue[prevQueueIndex];
-      console.log('⏮️ Playing previous track at queue index:', prevQueueIndex, 'track index:', prevTrackIndex);
-      setCurrentQueueIndex(prevQueueIndex);
-      await play(prevTrackIndex);
+    if (playableTracks.length === 0 || playQueue.length === 0 || isChangingTracks.current) return;
+    const prevIdx = currentQueueIndex - 1;
+    if (prevIdx >= 0) {
+      setCurrentQueueIndex(prevIdx);
+      await play(playQueue[prevIdx]);
     } else {
-      const lastQueueIndex = playQueue.length - 1;
-      const lastTrackIndex = playQueue[lastQueueIndex];
-      console.log('⏮️ Wrapping to last track at queue index:', lastQueueIndex, 'track index:', lastTrackIndex);
-      setCurrentQueueIndex(lastQueueIndex);
-      await play(lastTrackIndex);
+      const lastIdx = playQueue.length - 1;
+      setCurrentQueueIndex(lastIdx);
+      await play(playQueue[lastIdx]);
     }
   }, [playableTracks.length, playQueue, currentQueueIndex, play]);
 
   const toggleShuffle = useCallback(() => {
-    console.log('🔀 Toggling shuffle from', shuffleMode, 'to', !shuffleMode);
-    
     if (!shuffleMode) {
-      const currentTrackIndex = playQueue[currentQueueIndex];
-      console.log('🔀 Current track index:', currentTrackIndex);
-      
-      const shuffledQueue = createWeightedShuffle(currentTrackIndex);
-      
-      setPlayQueue(shuffledQueue);
+      const curIdx = playQueue[currentQueueIndex];
+      const shuffled = createWeightedShuffle(curIdx);
+      setPlayQueue(shuffled);
       setCurrentQueueIndex(0);
       setShuffleMode(true);
-      
-      console.log('🔀 Shuffle enabled - new queue length:', shuffledQueue.length);
     } else {
-      const currentTrackIndex = playQueue[currentQueueIndex];
-      console.log('🔀 Current track when turning off shuffle:', currentTrackIndex);
-      
-      const originalIndex = originalQueue.indexOf(currentTrackIndex);
-      
+      const curIdx = playQueue[currentQueueIndex];
+      const originalIndex = originalQueue.indexOf(curIdx);
+
       if (originalIndex >= 0) {
-        const reorderedQueue = [
+        const reordered = [
           ...originalQueue.slice(originalIndex),
-          ...originalQueue.slice(0, originalIndex)
+          ...originalQueue.slice(0, originalIndex),
         ];
-        
-        setPlayQueue(reorderedQueue);
+        setPlayQueue(reordered);
         setCurrentQueueIndex(0);
       } else {
         setPlayQueue([...originalQueue]);
-        setCurrentQueueIndex(originalIndex >= 0 ? originalIndex : 0);
+        setCurrentQueueIndex(0);
       }
-      
+
       setShuffleMode(false);
-      console.log('🔀 Shuffle disabled - restored sequential order');
     }
   }, [shuffleMode, createWeightedShuffle, originalQueue, playQueue, currentQueueIndex]);
 
-  // FIXED: Better playAll function
   const playAll = useCallback(async () => {
     if (playableTracks.length === 0) return;
-    
-    console.log('🎵 Play All - shuffle mode:', shuffleMode);
-    
-    let queueToUse;
-    if (shuffleMode) {
-      queueToUse = createWeightedShuffle();
-      setPlayQueue(queueToUse);
-    } else {
-      queueToUse = [...originalQueue];
-      setPlayQueue(queueToUse);
-    }
-    
-    const firstTrackIndex = queueToUse[0];
-    console.log('🎵 Playing first track at index:', firstTrackIndex);
-    setCurrentQueueIndex(0);
-    
-    // FIXED: Actually start playing the first track
-    await play(firstTrackIndex);
-  }, [playableTracks.length, shuffleMode, createWeightedShuffle, originalQueue, play]);
 
+    let q;
+    if (shuffleMode) {
+      q = createWeightedShuffle();
+      setPlayQueue(q);
+    } else {
+      q = [...originalQueue];
+      setPlayQueue(q);
+    }
+
+    const first = q[0];
+    setCurrentQueueIndex(0);
+    await ensureReadyThenPlay(first);
+  }, [playableTracks.length, shuffleMode, createWeightedShuffle, originalQueue, ensureReadyThenPlay]);
+
+  // Wrap seek so we can suppress false "track end" after manual seeks
+  const seek = useCallback(async (ms) => {
+    userActionRef.current.soughtAt = Date.now();
+    await sdkSeek(ms);
+  }, [sdkSeek]);
+
+  /* ----------------- helpers for UI ----------------- */
   const getPlayableTrackIndex = useCallback((originalTrackIndex) => {
     const originalTrack = tracks[originalTrackIndex];
     if (!originalTrack?.spotifyId) return -1;
-    
-    return playableTracks.findIndex(track => track.trackId === originalTrack.trackId);
+    return playableTracks.findIndex(t => t.trackId === originalTrack.trackId);
   }, [tracks, playableTracks]);
 
   const playTrackByOriginalIndex = useCallback(async (originalTrackIndex) => {
     const playableIndex = getPlayableTrackIndex(originalTrackIndex);
-    if (playableIndex >= 0) {
-      const queueIndex = playQueue.findIndex(index => index === playableIndex);
-      if (queueIndex >= 0) {
-        setCurrentQueueIndex(queueIndex);
-        await play(playableIndex);
-      } else {
-        await play(playableIndex);
-      }
-    }
+    if (playableIndex < 0) return;
+    const qIdx = playQueue.findIndex(i => i === playableIndex);
+    if (qIdx >= 0) setCurrentQueueIndex(qIdx);
+    await play(playableIndex);
   }, [getPlayableTrackIndex, play, playQueue]);
 
   const playTrackFromQueue = useCallback(async (queueIndex) => {
-    if (queueIndex >= 0 && queueIndex < playQueue.length) {
-      const trackIndex = playQueue[queueIndex];
-      setCurrentQueueIndex(queueIndex);
-      await play(trackIndex);
-    }
+    if (queueIndex < 0 || queueIndex >= playQueue.length) return;
+    setCurrentQueueIndex(queueIndex);
+    await play(playQueue[queueIndex]);
   }, [playQueue, play]);
 
   const isTrackCurrentlyPlaying = useCallback((originalTrackIndex) => {
     const playableIndex = getPlayableTrackIndex(originalTrackIndex);
     if (playableIndex < 0) return false;
-    
-    const currentTrackIndex = playQueue[currentQueueIndex];
-    return currentTrackIndex === playableIndex && isPlaying;
+    const cur = playQueue[currentQueueIndex];
+    return cur === playableIndex && isPlaying;
   }, [getPlayableTrackIndex, playQueue, currentQueueIndex, isPlaying]);
 
   const isTrackCurrent = useCallback((originalTrackIndex) => {
     const playableIndex = getPlayableTrackIndex(originalTrackIndex);
     if (playableIndex < 0) return false;
-    
-    const currentTrackIndex = playQueue[currentQueueIndex];
-    return currentTrackIndex === playableIndex;
+    const cur = playQueue[currentQueueIndex];
+    return cur === playableIndex;
   }, [getPlayableTrackIndex, playQueue, currentQueueIndex]);
 
-  useEffect(() => {
-    if (playableTracks.length > 0) {
-      initializeQueue();
-    }
-  }, [playableTracks.length]);
+  /* ----------------- progress sync & smoothing ----------------- */
 
-  // FIXED: Improved track end detection with better logic
+  // Keep our local position/duration in sync with SDK state
+  useEffect(() => {
+    if (!playerState) return;
+    setDurationMs(playerState.duration || 0);
+    // Accept SDK position when it jumps significantly or on pause/resume
+    setPositionMs(playerState.position || 0);
+  }, [playerState?.position, playerState?.duration]);
+
+  // Smoothly increment position while playing (between SDK updates)
+  useEffect(() => {
+    let rafId = 0;
+    let last = 0;
+
+    const tick = (ts) => {
+      if (!last) last = ts;
+      const dt = ts - last;
+      last = ts;
+
+      setPositionMs(prev => {
+        if (!isPlaying || durationMs === 0) return prev;
+        const next = Math.min(prev + dt, durationMs);
+        return next;
+      });
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    if (isPlaying && durationMs > 0) {
+      rafId = requestAnimationFrame(tick);
+    }
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying, durationMs]);
+
+  /* ----------------- track end detection (robust) ----------------- */
+
+  // Only advance when the track is actually reaching its end while playing.
+  // Ignore recent user pauses/seeks to prevent false positives.
   useEffect(() => {
     if (trackEndDetectionRef.current) {
       clearTimeout(trackEndDetectionRef.current);
     }
+    if (!playerState || !durationMs) return;
 
-    if (!playerState || !playerState.duration || playerState.duration === 0) {
-      return;
-    }
+    const position = positionMs;
+    const remaining = durationMs - position;
 
-    const position = playerState.position || 0;
-    const duration = playerState.duration;
-    const remainingTime = duration - position;
-    
-    // Track end detection logic:
-    // 1. Track is very close to end (within 1 second)
-    // 2. Track has actually stopped playing
-    // 3. We haven't processed this track end recently
-    const isVeryNearEnd = remainingTime < 1000;
-    const trackHasStopped = !isPlaying && position > 0;
-    const timeSinceLastEnd = Date.now() - lastTrackEndTime.current;
-    const currentSpotifyId = spotifyCurrentTrack?.id;
-    
-    // Prevent duplicate processing of the same track
-    const isDifferentTrack = lastProcessedTrack.current !== currentSpotifyId;
-    
-    if ((isVeryNearEnd || trackHasStopped) && 
-        timeSinceLastEnd > 2000 && 
-        duration > 10000 && // Only for tracks longer than 10s
-        isDifferentTrack) {
-      
-      console.log('🔄 Track end detected:', {
-        position,
-        duration,
-        remainingTime,
-        isPlaying,
-        timeSinceLastEnd,
-        currentSpotifyId
-      });
-      
+    const recentlyPaused = Date.now() - userActionRef.current.pausedAt < IGNORE_AFTER_USER_ACTION_MS;
+    const recentlySought = Date.now() - userActionRef.current.soughtAt < IGNORE_AFTER_USER_ACTION_MS;
+
+    // Don't auto-advance on manual pause/seek
+    if (recentlyPaused || recentlySought) return;
+
+    // Only consider end-of-track when actually playing
+    const nearEnd = durationMs > 10000 && remaining <= 1200; // >10s tracks, last ~1.2s
+
+    // Also avoid double-triggering for the same track id
+    const sid = spotifyCurrentTrack?.id || null;
+    const sameAsLast = lastProcessedTrack.current === sid;
+
+    if (isPlaying && nearEnd && sid && !sameAsLast) {
       trackEndDetectionRef.current = setTimeout(() => {
         lastTrackEndTime.current = Date.now();
-        lastProcessedTrack.current = currentSpotifyId;
+        lastProcessedTrack.current = sid;
         next();
-      }, 500);
+      }, 700);
     }
 
     return () => {
@@ -426,8 +394,24 @@ export function useMusicPlayer(tracks, sortMode) {
         clearTimeout(trackEndDetectionRef.current);
       }
     };
-  }, [playerState?.position, playerState?.duration, isPlaying, spotifyCurrentTrack?.id, next]);
+  }, [isPlaying, durationMs, positionMs, spotifyCurrentTrack?.id, next, playerState]);
 
+  /* ----------------- keep queue index in sync with SDK ----------------- */
+
+  useEffect(() => {
+    const sid = spotifyCurrentTrack?.id || null;
+    if (!sid || sid === prevSpotifyTrackId.current) return;
+
+    prevSpotifyTrackId.current = sid;
+
+    const idxInPlayable = playableTracks.findIndex(t => t.spotifyId === sid);
+    if (idxInPlayable >= 0) {
+      const qIdx = playQueue.findIndex(i => i === idxInPlayable);
+      if (qIdx >= 0) setCurrentQueueIndex(qIdx);
+    }
+  }, [spotifyCurrentTrack?.id, playableTracks, playQueue]);
+
+  /* ----------------- return API ----------------- */
   return {
     // State
     isPlaying,
@@ -436,13 +420,13 @@ export function useMusicPlayer(tracks, sortMode) {
     shuffleMode,
     playQueue,
     playableTracks,
-    
+
     // Spotify Web Playback SDK state
     spotifyReady,
     spotifyActive,
     spotifyError,
     playerState,
-    
+
     // Actions
     play,
     pause,
@@ -453,19 +437,19 @@ export function useMusicPlayer(tracks, sortMode) {
     playTrackByOriginalIndex,
     playTrackFromQueue,
     getPlayableTrackIndex,
-    
+
     // Track state helpers
     isTrackCurrentlyPlaying,
     isTrackCurrent,
-    
+
     // Spotify Web Playback SDK actions
     setVolume,
-    seek,
+    seek,            // wrapped to mark user seek
     transferPlayback,
-    
-    // Computed values
-    position: playerState?.position || 0,
-    duration: playerState?.duration || 0,
+
+    // Computed values (smooth)
+    position: positionMs,
+    duration: durationMs,
     volume: playerState?.volume || 0.5,
   };
 }
