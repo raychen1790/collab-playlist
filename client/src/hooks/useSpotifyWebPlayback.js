@@ -71,6 +71,8 @@ export function useSpotifyWebPlayback() {
   const lastSuccessfulToken = useRef(null);
   const readyTimeoutRef = useRef(null);
   const sdkLoadedRef = useRef(false);
+  // (#1) StrictMode-safe init timer handle
+  const initTimerRef = useRef(null);
 
   // Position tracking
   const positionUpdateIntervalRef = useRef(null);
@@ -181,7 +183,6 @@ export function useSpotifyWebPlayback() {
             lastUpdateTimeRef.current = Date.now();
 
             setPlayerState(prev => {
-              // guard against null
               const base = prev ? { ...prev } : {};
               return { ...base, ...state, position: state.position };
             });
@@ -315,7 +316,6 @@ export function useSpotifyWebPlayback() {
       console.log('🔄 Initialization already in progress, skipping');
       return;
     }
-    initializationInProgress.current = true;
 
     try {
       console.log('🔄 Initializing Spotify Player...');
@@ -324,7 +324,6 @@ export function useSpotifyWebPlayback() {
       const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost';
       if (!isSecure) {
         setError('Spotify Web Playback requires HTTPS or localhost.');
-        initializationInProgress.current = false;
         return;
       }
 
@@ -353,6 +352,9 @@ export function useSpotifyWebPlayback() {
       setPlayerState(null);
       stopPositionUpdates();
 
+      // (#2) Set the in-progress guard **late**, just before we start async work
+      initializationInProgress.current = true;
+
       const spotify = await loadSpotifyScript();
 
       // Quick auth smoke test (do not throw hard)
@@ -362,7 +364,6 @@ export function useSpotifyWebPlayback() {
       } catch (authErr) {
         console.error('❌ Auth system check failed:', authErr);
         setError('Authentication system not ready. Please refresh the page.');
-        initializationInProgress.current = false;
         return;
       }
 
@@ -388,11 +389,6 @@ export function useSpotifyWebPlayback() {
       spotifyPlayer.addListener('initialization_error', ({ message }) => {
         console.error('❌ Initialization error:', message);
         setError(`Initialization error: ${message}`);
-        initializationInProgress.current = false;
-        if (readyTimeoutRef.current) {
-          clearTimeout(readyTimeoutRef.current);
-          readyTimeoutRef.current = null;
-        }
       });
 
       spotifyPlayer.addListener('authentication_error', ({ message }) => {
@@ -402,22 +398,14 @@ export function useSpotifyWebPlayback() {
           retryCountRef.current++;
           console.log(`🔄 Retrying authentication (${retryCountRef.current}/${maxRetries})...`);
           setTimeout(() => {
-            initializationInProgress.current = false;
             initializePlayer();
           }, 3000);
-        } else {
-          initializationInProgress.current = false;
         }
       });
 
       spotifyPlayer.addListener('account_error', ({ message }) => {
         console.error('❌ Account error:', message);
         setError(`Account error: ${message}. Spotify Premium required.`);
-        initializationInProgress.current = false;
-        if (readyTimeoutRef.current) {
-          clearTimeout(readyTimeoutRef.current);
-          readyTimeoutRef.current = null;
-        }
       });
 
       spotifyPlayer.addListener('playback_error', ({ message }) => {
@@ -460,7 +448,6 @@ export function useSpotifyWebPlayback() {
         setIsReady(true);
         setError(null);
         retryCountRef.current = 0;
-        initializationInProgress.current = false;
 
         console.log('📱 Device registered, waiting for Spotify to recognize it...');
         setTimeout(async () => {
@@ -495,7 +482,6 @@ export function useSpotifyWebPlayback() {
             setDeviceId(fallbackDeviceId);
             setIsReady(true);
             setError('Player ready (fallback detection)');
-            initializationInProgress.current = false;
             setTimeout(() => checkActiveDevice(fallbackDeviceId), 3000);
             return;
           }
@@ -506,7 +492,6 @@ export function useSpotifyWebPlayback() {
             console.log('🔍 Player appears functional despite no ready event');
             setIsReady(true);
             setError('Player connected (state detection)');
-            initializationInProgress.current = false;
             return;
           }
         } catch (fallbackError) {
@@ -514,7 +499,6 @@ export function useSpotifyWebPlayback() {
         }
 
         setError('Player connection timeout. Please refresh and try again.');
-        initializationInProgress.current = false;
       }, 30000);
 
       // Connect
@@ -535,13 +519,14 @@ export function useSpotifyWebPlayback() {
         retryCountRef.current++;
         console.log(`🔄 Retrying initialization (${retryCountRef.current}/${maxRetries})...`);
         setTimeout(() => {
-          initializationInProgress.current = false;
           initializePlayer();
         }, 5000 * retryCountRef.current);
       } else {
         setError('Failed to initialize after multiple attempts. Please refresh.');
-        initializationInProgress.current = false;
       }
+    } finally {
+      // Always release the guard so a subsequent mount can re-init
+      initializationInProgress.current = false;
     }
   }, [loadSpotifyScript, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, checkActiveDevice, waitForDeviceRegistration]);
 
@@ -551,7 +536,8 @@ export function useSpotifyWebPlayback() {
 
     if (accessToken && !player && !initializationInProgress.current && mounted) {
       console.log('🔍 Access token available, initializing player...');
-      setTimeout(() => {
+      // (#1) Keep a handle so StrictMode's test-unmount can cancel it cleanly
+      initTimerRef.current = setTimeout(() => {
         if (mounted && !initializationInProgress.current) {
           initializePlayer();
         }
@@ -560,6 +546,15 @@ export function useSpotifyWebPlayback() {
 
     return () => {
       mounted = false;
+
+      // (#1) StrictMode-safe: allow re-init after dev test unmount
+      initializationInProgress.current = false;
+
+      if (initTimerRef.current) {
+        clearTimeout(initTimerRef.current);
+        initTimerRef.current = null;
+      }
+
       stopPositionUpdates();
 
       if (readyTimeoutRef.current) {
@@ -572,6 +567,9 @@ export function useSpotifyWebPlayback() {
         playerRef.current.disconnect().catch(e => {
           console.log('Note: Disconnect error (expected):', e.message);
         });
+        // ensure fresh start next mount
+        playerRef.current = null;
+        setPlayer(null);
       }
 
       if (window.onSpotifyWebPlaybackSDKReady) {
@@ -791,6 +789,19 @@ export function useSpotifyWebPlayback() {
     }
   }, [player]);
 
+  // (#3) iOS/Safari user-gesture activation helper
+  const activateAudio = useCallback(async () => {
+    try {
+      if (!playerRef.current?.activateElement) return false;
+      await playerRef.current.activateElement();
+      console.log('🔊 Audio element activated');
+      return true;
+    } catch (e) {
+      console.log('⚠️ Failed to activate audio element:', e);
+      return false;
+    }
+  }, []);
+
   return {
     // state
     player,
@@ -810,6 +821,8 @@ export function useSpotifyWebPlayback() {
     setVolume: setPlayerVolume,
     getCurrentState,
     transferPlayback,
+    // (#3)
+    activateAudio,
 
     // derived
     isPlaying: !!(playerState && !playerState.paused),

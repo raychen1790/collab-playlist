@@ -1,4 +1,4 @@
-// client/src/pages/RoomPage.jsx - Updated to use enhanced API requests
+// client/src/pages/RoomPage.jsx
 import {
   useContext,
   useEffect,
@@ -55,6 +55,8 @@ export default function RoomPage() {
     setVolume,
     seek,
     transferPlayback,
+    // NEW: user-gesture activator for Safari/iOS
+    activateAudio,
   } = useMusicPlayer(tracks, sortMode);
 
   /* ------------ data loader ------------- */
@@ -319,7 +321,7 @@ export default function RoomPage() {
 
           {spotifyReady && !spotifyActive && (
             <div className="mb-6 p-4 bg-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-xl">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-3">
                   <Music size={20} className="text-blue-600" />
                   <div>
@@ -327,12 +329,21 @@ export default function RoomPage() {
                     <p className="text-sm text-blue-600 font-medium">Ready to play music on this device</p>
                   </div>
                 </div>
-                <button 
-                  onClick={transferPlayback}
-                  className="btn-primary"
-                >
-                  Activate
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={transferPlayback}
+                    className="btn-primary"
+                  >
+                    Activate
+                  </button>
+                  {/* NEW: user-gesture to satisfy Safari/iOS audio policy */}
+                  <button
+                    onClick={async () => { try { await activateAudio(); } catch {} }}
+                    className="btn-secondary"
+                  >
+                    Enable Audio
+                  </button>
+                </div>
               </div>
             </div>
           )}

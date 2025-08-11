@@ -1,4 +1,4 @@
-// client/src/hooks/useMusicPlayer.js - FIXED VERSION
+// client/src/hooks/useMusicPlayer.js
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSpotifyWebPlayback } from './useSpotifyWebPlayback.js';
 
@@ -28,6 +28,8 @@ export function useMusicPlayer(tracks, sortMode) {
     transferPlayback,
     setVolume,
     seek,
+    // NEW: pass through user-gesture activator (Safari/iOS)
+    activateAudio,
   } = useSpotifyWebPlayback();
 
   console.log('🎯 useMusicPlayer Debug:', {
@@ -414,7 +416,7 @@ export function useMusicPlayer(tracks, sortMode) {
         currentSpotifyId
       });
       
-      trackEndDetectionRef.current = setTimeout(() => {
+        trackEndDetectionRef.current = setTimeout(() => {
         lastTrackEndTime.current = Date.now();
         lastProcessedTrack.current = currentSpotifyId;
         next();
@@ -462,6 +464,8 @@ export function useMusicPlayer(tracks, sortMode) {
     setVolume,
     seek,
     transferPlayback,
+    // NEW
+    activateAudio,
     
     // Computed values
     position: playerState?.position || 0,
