@@ -8,22 +8,33 @@ export function useMusicPlayer(tracks, sortMode) {
   const [playQueue, setPlayQueue] = useState([]);
   const [originalQueue, setOriginalQueue] = useState([]);
 
-  // Smooth, UI-facing progress
+  // Smooth, UI-facing progress (these drive the scrubber)
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
 
-  // Smoother model: position = basePos + (isPlaying ? now - baseTime : 0)
+  // Smoothing model: position = basePos + (isPlaying ? now - baseTime : 0)
   const smoothBasePosRef = useRef(0);
   const smoothBaseTimeRef = useRef(0);
+
+  // Briefly pause RAF updates (one frame) during hard resets
+  const suppressRafUntilRef = useRef(0);
 
   // Guards / heuristics
   const isChangingTracks = useRef(false);
   const lastProcessedTrack = useRef(null);
   const lastTrackEndAt = useRef(0);
   const prevSpotifyTrackId = useRef(null);
-  const userActionRef = useRef({ pausedAt: 0, soughtAt: 0 });
-  const IGNORE_AFTER_USER_ACTION_MS = 1500;
-  const END_THROTTLE_MS = 1200;
+
+  // Ignore stale SDK positions right after a user action
+  const userActionRef = useRef({
+    pausedAt: 0,
+    soughtAt: 0,
+  });
+  const ignoreSdkPositionUntilRef = useRef(0);
+
+  const IGNORE_AFTER_USER_ACTION_MS = 1800; // for end-detection
+  const IGNORE_SDK_AFTER_SEEK_MS   = 2200; // ignore stale SDK positions after seek
+  const END_THROTTLE_MS            = 1200;
 
   const {
     isReady: spotifyReady,
@@ -123,6 +134,13 @@ export function useMusicPlayer(tracks, sortMode) {
       await transferPlayback();
       await new Promise(r => setTimeout(r, 700));
     }
+
+    // Hard reset scrubber to start for new song (no “descending”)
+    suppressRafUntilRef.current = performance.now() + 100;
+    setPositionMs(0);
+    smoothBasePosRef.current = 0;
+    smoothBaseTimeRef.current = performance.now();
+
     const track = playableTracks[targetTrackIndex];
     if (!track?.spotifyId) return false;
     const uri = `spotify:track:${track.spotifyId}`;
@@ -157,7 +175,7 @@ export function useMusicPlayer(tracks, sortMode) {
 
   const next = useCallback(async () => {
     if (!playableTracks.length || !playQueue.length || isChangingTracks.current) return;
-    if (playQueue.length === 1) return; // don't "restart" when only one track
+    if (playQueue.length === 1) return; // don't appear to "restart" when only one track
     const nextIdx = currentQueueIndex + 1;
     if (nextIdx < playQueue.length) {
       setCurrentQueueIndex(nextIdx);
@@ -217,13 +235,16 @@ export function useMusicPlayer(tracks, sortMode) {
     await ensureReadyThenPlay(first);
   }, [playableTracks.length, shuffleMode, createWeightedShuffle, originalQueue, ensureReadyThenPlay]);
 
-  // Seek wrapper: make UI jump immediately + suppress false end detection
+  // Seek wrapper: jump UI instantly + ignore stale SDK for a short window
   const seek = useCallback(async (ms) => {
     userActionRef.current.soughtAt = Date.now();
-    // update UI instantly
+    ignoreSdkPositionUntilRef.current = Date.now() + IGNORE_SDK_AFTER_SEEK_MS;
+
+    // Instant UI jump
     setPositionMs(ms);
     smoothBasePosRef.current = ms;
     smoothBaseTimeRef.current = performance.now();
+
     await sdkSeek(ms);
   }, [sdkSeek]);
 
@@ -264,21 +285,30 @@ export function useMusicPlayer(tracks, sortMode) {
 
   /* ----------------- progress sync & smoothing ----------------- */
 
-  // Adopt SDK state as the authoritative base
+  // Adopt SDK state as the authoritative base, but ignore stale positions
   useEffect(() => {
     if (!playerState) return;
 
+    // Always accept duration
     const dur = playerState.duration || 0;
-    const pos = playerState.position || 0;
+    if (dur !== durationMs) setDurationMs(dur);
 
-    setDurationMs(dur);
-    setPositionMs(pos);
+    // Stale positions sometimes arrive a moment after a seek; ignore briefly
+    const now = Date.now();
+    if (now < ignoreSdkPositionUntilRef.current) return;
 
-    smoothBasePosRef.current = pos;
-    smoothBaseTimeRef.current = performance.now();
-  }, [playerState?.position, playerState?.duration]);
+    const sdkPos = playerState.position || 0;
 
-  // When play/pause toggles, position should continue from the current base
+    // If SDK reports a big jump forward/back, adopt it as base
+    const delta = Math.abs(sdkPos - positionMs);
+    if (delta > 1200 || !isPlaying) {
+      setPositionMs(sdkPos);
+      smoothBasePosRef.current = sdkPos;
+      smoothBaseTimeRef.current = performance.now();
+    }
+  }, [playerState?.position, playerState?.duration]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When play/pause toggles, keep the base aligned so RAF continues smoothly
   useEffect(() => {
     smoothBasePosRef.current = positionMs;
     smoothBaseTimeRef.current = performance.now();
@@ -288,9 +318,14 @@ export function useMusicPlayer(tracks, sortMode) {
   useEffect(() => {
     let rafId = 0;
     const tick = () => {
+      const nowPerf = performance.now();
+      if (nowPerf < suppressRafUntilRef.current) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+
       if (isPlaying && durationMs > 0) {
-        const now = performance.now();
-        const elapsed = now - smoothBaseTimeRef.current;
+        const elapsed = nowPerf - smoothBaseTimeRef.current;
         const nextPos = Math.min(smoothBasePosRef.current + elapsed, durationMs);
         setPositionMs(nextPos);
       }
@@ -302,10 +337,6 @@ export function useMusicPlayer(tracks, sortMode) {
 
   /* ----------------- end-of-track detection ----------------- */
 
-  // Advance when:
-  //  - playing and within the final 0.9s, OR
-  //  - paused with position ~end (SDK often pauses at end)
-  // And: ignore right after user pause/seek; throttle; avoid repeats for same track id.
   useEffect(() => {
     if (!durationMs) return;
 
@@ -330,17 +361,23 @@ export function useMusicPlayer(tracks, sortMode) {
       lastProcessedTrack.current = sid;
       lastTrackEndAt.current = Date.now();
       if (playQueue.length > 1) {
-        // give SDK a beat to settle at end to avoid "restart" blips
         setTimeout(() => { next(); }, 200);
       }
     }
   }, [isPlaying, durationMs, positionMs, spotifyCurrentTrack?.id, playQueue.length, next]);
 
-  /* ----------------- keep queue index in sync with SDK ----------------- */
+  /* ----------------- keep queue index & UI reset on track change ----------------- */
   useEffect(() => {
     const sid = spotifyCurrentTrack?.id || null;
     if (!sid || sid === prevSpotifyTrackId.current) return;
+
     prevSpotifyTrackId.current = sid;
+
+    // Hard reset scrubber to 0 immediately when a new track is reported
+    suppressRafUntilRef.current = performance.now() + 100;
+    setPositionMs(0);
+    smoothBasePosRef.current = 0;
+    smoothBaseTimeRef.current = performance.now();
 
     const idxInPlayable = playableTracks.findIndex(t => t.spotifyId === sid);
     if (idxInPlayable >= 0) {
@@ -385,7 +422,7 @@ export function useMusicPlayer(tracks, sortMode) {
     seek,
     transferPlayback,
 
-    // Computed (smooth)
+    // Computed (smooth + instantaneous on seek/track change)
     position: positionMs,
     duration: durationMs,
     volume: playerState?.volume || 0.5,
