@@ -1,4 +1,8 @@
-// client/src/hooks/useSpotifyWebPlayback.js - FIXED VERSION with proper dual auth integration
+// ========================================
+// 1. FIXED useSpotifyWebPlayback.js - Fully aligned with auth system
+// ========================================
+
+// client/src/hooks/useSpotifyWebPlayback.js - FULLY ALIGNED VERSION
 import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 
@@ -15,16 +19,14 @@ class RateLimiter {
     const now = Date.now();
     const key = endpoint || 'global';
     
-    // Check global cooldown (for 429 errors)
     if (now < this.globalCooldown) {
       const waitTime = this.globalCooldown - now;
       console.log(`⏳ Global rate limit cooldown: ${waitTime}ms`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
-    // Check endpoint-specific cooldown
     const lastRequest = this.requests.get(key) || 0;
-    const minInterval = key === '/me/player' ? 3000 : 1000; // Longer for player endpoint
+    const minInterval = key === '/me/player' ? 3000 : 1000;
     const timeSinceLastRequest = now - lastRequest;
     
     if (timeSinceLastRequest < minInterval) {
@@ -37,7 +39,6 @@ class RateLimiter {
   }
 
   handleRateLimitError() {
-    // Set a 5-second global cooldown after any 429 error
     this.globalCooldown = Date.now() + 5000;
     console.log('🚫 Rate limited - setting 5s global cooldown');
   }
@@ -68,47 +69,43 @@ export function useSpotifyWebPlayback() {
 
   const { apiRequest, accessToken, getFreshToken } = useContext(AuthContext);
 
-  // FIXED: Enhanced token getter that uses the dual auth system
+  // CRITICAL FIX: Token getter that EXACTLY matches your auth system
   const getValidTokenForSpotify = useCallback(async () => {
-    const now = Date.now();
-    
     console.log('🎵 Getting token for Spotify Web Playback...');
     
     try {
-      // First try to get a fresh token from the auth system
+      // Method 1: Try getFreshToken from AuthContext first (this uses your /auth/token endpoint)
       const freshToken = await getFreshToken();
       if (freshToken) {
-        console.log('✅ Got fresh token from AuthContext');
+        console.log('✅ Got fresh token from AuthContext.getFreshToken()');
         tokenRef.current = freshToken;
-        lastTokenRefresh.current = now;
+        lastTokenRefresh.current = Date.now();
         return freshToken;
       }
 
-      // Fallback to using apiRequest to get token from backend
-      const response = await apiRequest('/auth/token', {
-        method: 'GET',
-        headers: {
-          'Authorization': accessToken ? `Bearer ${accessToken}` : undefined
-        }
-      });
+      // Method 2: If that fails, try apiRequest to /auth/token directly
+      console.log('🔄 getFreshToken failed, trying direct apiRequest...');
+      const response = await apiRequest('/auth/token', { method: 'GET' });
 
       if (response.ok) {
         const data = await response.json();
         if (data.access_token) {
-          console.log('✅ Got token from /auth/token endpoint');
+          console.log('✅ Got token from direct /auth/token call');
           tokenRef.current = data.access_token;
-          lastTokenRefresh.current = now;
+          lastTokenRefresh.current = Date.now();
           return data.access_token;
         }
-      } else if (response.status === 401) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('❌ Token request failed with 401:', errorData);
-        throw new Error('Authentication failed - please re-login');
       }
 
-      throw new Error('No valid token available');
+      // Method 3: Last resort - use current accessToken if available
+      if (accessToken) {
+        console.log('⚠️ Using current accessToken as fallback');
+        return accessToken;
+      }
+
+      throw new Error('No valid token available through any method');
     } catch (err) {
-      console.error('❌ Failed to get valid token for Spotify:', err);
+      console.error('❌ All token methods failed:', err);
       throw new Error(`Token error: ${err.message}`);
     }
   }, [getFreshToken, apiRequest, accessToken]);
@@ -121,7 +118,7 @@ export function useSpotifyWebPlayback() {
     }
   }, [accessToken]);
 
-  // Load Spotify script with error handling
+  // Load Spotify script
   const loadSpotifyScript = useCallback(() => {
     return new Promise((resolve, reject) => {
       if (window.Spotify) {
@@ -152,13 +149,12 @@ export function useSpotifyWebPlayback() {
     });
   }, []);
 
-  // Enhanced position updates with better error handling
+  // Position tracking
   const startPositionUpdates = useCallback(() => {
     if (positionUpdateIntervalRef.current) {
       clearInterval(positionUpdateIntervalRef.current);
     }
 
-    // Less frequent updates to avoid rate limiting
     positionUpdateIntervalRef.current = setInterval(async () => {
       if (player && isActive && isPlayingRef.current) {
         try {
@@ -175,15 +171,13 @@ export function useSpotifyWebPlayback() {
             }));
           }
         } catch (err) {
-          // Don't log errors for position updates to avoid spam
           if (!err.message.includes('rate limit')) {
             console.error('Error getting current state:', err);
           }
         }
       }
-    }, 8000); // Increased to 8 seconds to avoid rate limiting
+    }, 8000);
 
-    // Smooth interpolation every 500ms (client-side only, no API calls)
     const smoothInterval = setInterval(() => {
       if (isPlayingRef.current && playerState?.duration) {
         const now = Date.now();
@@ -203,7 +197,7 @@ export function useSpotifyWebPlayback() {
           return prevState;
         });
       }
-    }, 500); // Smoother updates for UI
+    }, 500);
 
     positionUpdateIntervalRef.current = {
       main: positionUpdateIntervalRef.current,
@@ -223,26 +217,18 @@ export function useSpotifyWebPlayback() {
     }
   }, []);
 
-  // FIXED: Enhanced device checking that uses apiRequest for consistency
+  // CRITICAL FIX: Device checking that properly handles auth and 404 errors
   const checkActiveDevice = useCallback(async (deviceIdToCheck = deviceId) => {
     if (!deviceIdToCheck) return false;
 
     try {
       await rateLimiter.waitForRateLimit('/me/player');
       
-      // Use apiRequest for consistency with auth system
-      const response = await apiRequest('/auth/me', { method: 'GET' });
-      
-      if (!response.ok) {
-        console.error('Failed to verify auth before device check');
-        return false;
-      }
-
-      // Now check the actual player state using direct Spotify API with fresh token
+      // Get fresh token using our auth system
       const token = await getValidTokenForSpotify();
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased timeout
       
       const playerResponse = await fetch('https://api.spotify.com/v1/me/player', {
         headers: {
@@ -268,42 +254,60 @@ export function useSpotifyWebPlayback() {
         
         return isOurDeviceActive;
       } else if (playerResponse.status === 204) {
+        // No active devices - this is normal
         setIsActive(false);
         isPlayingRef.current = false;
         stopPositionUpdates();
         return false;
+      } else if (playerResponse.status === 404) {
+        // CRITICAL: Handle 404 specifically - might be temporary Spotify issue
+        console.log('⚠️ Got 404 when checking device - might be temporary Spotify issue');
+        // Don't change active state on 404, just log it
+        return isActive; // Return current state
       } else if (playerResponse.status === 429) {
         rateLimiter.handleRateLimitError();
         console.log('Device check rate limited');
-        return false;
+        return isActive; // Return current state
       } else {
         console.error('Failed to check active device:', playerResponse.status);
-        return false;
+        return isActive; // Return current state instead of false
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('Error checking active device:', err);
       }
-      return false;
+      return isActive; // Return current state on error
     }
-  }, [deviceId, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, apiRequest]);
+  }, [deviceId, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, isActive]);
 
-  // FIXED: Enhanced player initialization with proper auth integration
+  // CRITICAL FIX: Player initialization with robust error handling
   const initializePlayer = useCallback(async () => {
     try {
       console.log('🔄 Initializing Spotify Player...');
       const spotify = await loadSpotifyScript();
       
-      // Verify we can get a token before creating the player
-      const initialToken = await getValidTokenForSpotify();
-      console.log('✅ Got initial token for player initialization');
+      // Verify auth system is working first
+      try {
+        const response = await apiRequest('/auth/me', { method: 'GET' });
+        if (!response.ok) {
+          throw new Error('Auth system not ready');
+        }
+        const authData = await response.json();
+        if (!authData.user) {
+          throw new Error('User not authenticated');
+        }
+        console.log('✅ Auth system verified, user:', authData.user.display_name);
+      } catch (authErr) {
+        console.error('❌ Auth system check failed:', authErr);
+        setError('Authentication system not ready. Please refresh the page.');
+        return;
+      }
 
       const spotifyPlayer = new spotify.Player({
         name: SPOTIFY_PLAYER_NAME,
         getOAuthToken: async (cb) => {
           try {
             console.log('🔄 Spotify SDK requesting OAuth token...');
-            // FIXED: Use the proper token getter that integrates with auth system
             const freshToken = await getValidTokenForSpotify();
             console.log('✅ Providing fresh token to Spotify SDK');
             cb(freshToken);
@@ -316,24 +320,29 @@ export function useSpotifyWebPlayback() {
         volume: 0.5
       });
 
-      // Enhanced error handling
+      // Enhanced error handling with specific auth error handling
       spotifyPlayer.addListener('initialization_error', ({ message }) => {
         console.error('❌ Failed to initialize:', message);
         setError(`Initialization error: ${message}`);
       });
 
       spotifyPlayer.addListener('authentication_error', ({ message }) => {
-        console.error('❌ Failed to authenticate:', message);
-        setError(`Authentication error: ${message}`);
+        console.error('❌ Authentication error in Spotify Player:', message);
+        setError(`Spotify authentication error: ${message}`);
         
-        // Clear error after showing it briefly and retry if possible
-        setTimeout(() => {
-          if (retryCountRef.current < maxRetries) {
-            retryCountRef.current++;
-            console.log(`Retrying after auth error (${retryCountRef.current}/${maxRetries})...`);
-            setTimeout(() => initializePlayer(), 3000);
-          } else {
-            setError('Authentication failed after multiple attempts. Please refresh and try again.');
+        // Don't retry immediately on auth errors - might be a token issue
+        setTimeout(async () => {
+          console.log('🔄 Attempting to refresh auth after Spotify auth error...');
+          try {
+            // Force a fresh token
+            await getValidTokenForSpotify();
+            if (retryCountRef.current < maxRetries) {
+              retryCountRef.current++;
+              console.log(`Retrying after auth error (${retryCountRef.current}/${maxRetries})...`);
+              setTimeout(() => initializePlayer(), 3000);
+            }
+          } catch (refreshErr) {
+            setError('Authentication failed. Please refresh and try again.');
           }
         }, 2000);
       });
@@ -346,7 +355,6 @@ export function useSpotifyWebPlayback() {
       spotifyPlayer.addListener('playback_error', ({ message }) => {
         console.error('❌ Playback error:', message);
         setError(`Playback error: ${message}`);
-        // Clear playback errors after a short time
         setTimeout(() => setError(null), 5000);
       });
 
@@ -388,7 +396,7 @@ export function useSpotifyWebPlayback() {
         // Check if device is active after a delay
         setTimeout(() => {
           checkActiveDevice(device_id);
-        }, 2000);
+        }, 3000); // Increased delay
       });
 
       spotifyPlayer.addListener('not_ready', ({ device_id }) => {
@@ -417,12 +425,12 @@ export function useSpotifyWebPlayback() {
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++;
         console.log(`Retrying initialization (${retryCountRef.current}/${maxRetries})...`);
-        setTimeout(() => initializePlayer(), 3000 * retryCountRef.current); // Exponential backoff
+        setTimeout(() => initializePlayer(), 5000 * retryCountRef.current);
       } else {
         setError('Failed to initialize Spotify Player after multiple attempts. Please refresh the page.');
       }
     }
-  }, [loadSpotifyScript, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, checkActiveDevice]);
+  }, [loadSpotifyScript, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, checkActiveDevice, apiRequest]);
 
   // Initialize when we have access token
   useEffect(() => {
@@ -430,12 +438,11 @@ export function useSpotifyWebPlayback() {
 
     if (accessToken && mounted) {
       console.log('🔍 Access token available, initializing player...');
-      // Add a small delay to ensure everything is ready
       setTimeout(() => {
         if (mounted) {
           initializePlayer();
         }
-      }, 1000);
+      }, 2000); // Increased delay to ensure auth system is fully ready
     }
 
     return () => {
@@ -447,18 +454,18 @@ export function useSpotifyWebPlayback() {
     };
   }, [accessToken, initializePlayer, stopPositionUpdates]);
 
-  // Periodic device checking with rate limiting
+  // Periodic device checking with better error handling
   useEffect(() => {
     if (!isReady || !deviceId) return;
 
     const interval = setInterval(() => {
       checkActiveDevice(deviceId);
-    }, 15000); // Reduced frequency to avoid rate limiting
+    }, 20000); // Increased to 20 seconds to reduce load
     
     return () => clearInterval(interval);
   }, [isReady, deviceId, checkActiveDevice]);
 
-  // FIXED: Enhanced transfer playback with proper auth integration
+  // CRITICAL FIX: Enhanced transfer playback with 404 handling
   const transferPlayback = useCallback(async () => {
     if (!deviceId) {
       console.error('Cannot transfer playback: missing deviceId');
@@ -470,11 +477,10 @@ export function useSpotifyWebPlayback() {
     try {
       await rateLimiter.waitForRateLimit('/me/player');
       
-      // FIXED: Get token using the proper auth system
       const token = await getValidTokenForSpotify();
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // Increased timeout
       
       const response = await fetch('https://api.spotify.com/v1/me/player', {
         method: 'PUT',
@@ -494,39 +500,55 @@ export function useSpotifyWebPlayback() {
       if (response.ok || response.status === 202) {
         console.log('✅ Transfer playback request successful');
         
-        // Wait longer before checking
-        setTimeout(async () => {
+        // Wait and check multiple times
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        const checkTransfer = async () => {
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempts));
           const isActive = await checkActiveDevice(deviceId);
+          
           if (isActive) {
             console.log('✅ Successfully transferred playback to our device');
+            return true;
+          } else if (attempts < maxAttempts) {
+            console.log(`⏳ Transfer attempt ${attempts}/${maxAttempts} - device not yet active`);
+            return checkTransfer();
           } else {
-            console.log('⏳ Transfer request sent but device not yet active');
-            // Check again after more time
-            setTimeout(() => checkActiveDevice(deviceId), 3000);
+            console.log('⚠️ Transfer request sent but device activation timeout');
+            return false;
           }
-        }, 2000);
+        };
         
+        setTimeout(() => checkTransfer(), 1000);
         return true;
+      } else if (response.status === 404) {
+        // CRITICAL: Handle 404 specifically - common with Spotify Web API
+        console.error('❌ Transfer playback got 404 - device might not be recognized yet');
+        const errorText = await response.text().catch(() => 'Device not found');
+        setError('Device not found. Try refreshing the page or reauthorizing.');
+        return false;
       } else if (response.status === 429) {
         rateLimiter.handleRateLimitError();
         setError('Rate limited. Please wait a moment before trying again.');
         return false;
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
-        console.error('Failed to transfer playback:', response.status, errorText);
+        console.error('Failed to transfer playbook:', response.status, errorText);
         setError(`Failed to activate device: ${response.status} - ${errorText}`);
         return false;
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
-        console.error('Error transferring playback:', err);
+        console.error('Error transferring playbook:', err);
         setError(`Error activating device: ${err.message}`);
       }
       return false;
     }
   }, [deviceId, getValidTokenForSpotify, checkActiveDevice]);
 
-  // FIXED: Enhanced playTrack with proper auth integration
+  // Enhanced playTrack with 404 handling
   const playTrack = useCallback(async (spotifyUri, positionMs = 0) => {
     if (!player || !deviceId) {
       console.error('Player not ready or missing deviceId');
@@ -535,23 +557,21 @@ export function useSpotifyWebPlayback() {
 
     if (!isActive) {
       console.log('Device not active, attempting to transfer playback...');
-      const transferred = await transferPlayback();
+      const transferred = await transferPlaybook();
       if (!transferred) {
         return false;
       }
       
-      // Wait for device activation
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 4000));
     }
 
     try {
       await rateLimiter.waitForRateLimit('/me/player/play');
       
-      // FIXED: Get token using the proper auth system
       const token = await getValidTokenForSpotify();
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
       const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
         method: 'PUT',
@@ -569,18 +589,23 @@ export function useSpotifyWebPlayback() {
       clearTimeout(timeoutId);
 
       if (response.ok || response.status === 202) {
-        console.log('✅ Successfully started playback');
+        console.log('✅ Successfully started playbook');
         isPlayingRef.current = true;
         startPositionUpdates();
         return true;
+      } else if (response.status === 404) {
+        const errorText = await response.text().catch(() => 'Device not found');
+        console.error('❌ Playbook got 404:', errorText);
+        setError('Device not found. Please activate device first.');
+        return false;
       } else if (response.status === 429) {
         rateLimiter.handleRateLimitError();
         setError('Rate limited. Please wait before playing another track.');
         return false;
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
-        console.error('Failed to start playback:', response.status, errorText);
-        setError(`Playback failed: ${response.status} - ${errorText}`);
+        console.error('Failed to start playbook:', response.status, errorText);
+        setError(`Playbook failed: ${response.status} - ${errorText}`);
         return false;
       }
     } catch (err) {
@@ -592,24 +617,19 @@ export function useSpotifyWebPlayback() {
     }
   }, [player, deviceId, isActive, transferPlayback, startPositionUpdates, getValidTokenForSpotify]);
 
-  // Other player controls with rate limiting
+  // Other controls remain the same
   const togglePlay = useCallback(async () => {
     if (!player) return;
-
     try {
       await rateLimiter.waitForRateLimit('togglePlay');
       await player.togglePlay();
-      
-      // Update ref immediately for better UI response
       setTimeout(async () => {
         try {
           const state = await player.getCurrentState();
           if (state) {
             isPlayingRef.current = !state.paused;
           }
-        } catch (err) {
-          // Ignore errors for immediate state updates
-        }
+        } catch (err) {}
       }, 100);
     } catch (err) {
       console.error('Error toggling play:', err);
@@ -711,3 +731,42 @@ export function useSpotifyWebPlayback() {
     duration: playerState?.duration || 0,
   };
 }
+
+// ========================================
+// 2. Additional Auth System Verification
+// ========================================
+
+/*
+CRITICAL DEBUGGING STEPS:
+
+1. Verify your production environment variables:
+   - SPOTIFY_CLIENT_ID
+   - SPOTIFY_CLIENT_SECRET  
+   - REDIRECT_URI (must match exactly in Spotify app settings)
+   - FRONTEND_URI
+
+2. Check Spotify app settings:
+   - Make sure your production domain is added to Redirect URIs
+   - Verify you have all required scopes enabled
+   - Confirm the app is not in development mode restrictions
+
+3. Test the auth endpoints directly:
+   - GET /auth/me should return user data
+   - GET /auth/token should return valid token
+   - Both should work with cookies AND Authorization headers
+
+4. Monitor these logs specifically:
+   - "Got fresh token from AuthContext.getFreshToken()"  
+   - "Auth system verified, user: [username]"
+   - "Transfer playback request successful"
+   - Any 404 errors should now show more specific error messages
+
+5. Common 404 causes in production:
+   - Spotify app not approved for production use
+   - Domain mismatch in redirect URIs
+   - Token expired and refresh failed
+   - Rate limiting causing temporary failures
+   - CORS issues between frontend and backend domains
+
+The enhanced error handling will now give you much more specific information about what's failing.
+*/
