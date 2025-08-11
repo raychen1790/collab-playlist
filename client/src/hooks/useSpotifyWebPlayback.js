@@ -1,4 +1,4 @@
-// client/src/hooks/useSpotifyWebPlayback.js - COMPREHENSIVE FIX
+// client/src/hooks/useSpotifyWebPlayback.js - FIXED VERSION
 import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 
@@ -55,6 +55,7 @@ export function useSpotifyWebPlayback() {
   const maxRetries = 3;
   const initializationInProgress = useRef(false);
   const lastSuccessfulToken = useRef(null);
+  const readyTimeoutRef = useRef(null);
   
   // Position tracking
   const positionUpdateIntervalRef = useRef(null);
@@ -102,11 +103,30 @@ export function useSpotifyWebPlayback() {
     }
   }, [getFreshToken]);
 
-  // Load Spotify script
+  // Load Spotify script with better error handling
   const loadSpotifyScript = useCallback(() => {
     return new Promise((resolve, reject) => {
-      if (window.Spotify) {
+      console.log('📦 Loading Spotify Web Playback SDK...');
+      
+      // Check if already loaded
+      if (window.Spotify?.Player) {
+        console.log('✅ Spotify SDK already loaded');
         resolve(window.Spotify);
+        return;
+      }
+
+      // Check if script is already in DOM
+      const existingScript = document.querySelector('script[src*="spotify-player.js"]');
+      if (existingScript) {
+        console.log('📦 Spotify script already in DOM, waiting for load...');
+        const checkSpotify = () => {
+          if (window.Spotify?.Player) {
+            resolve(window.Spotify);
+          } else {
+            setTimeout(checkSpotify, 100);
+          }
+        };
+        checkSpotify();
         return;
       }
 
@@ -114,18 +134,31 @@ export function useSpotifyWebPlayback() {
       script.src = 'https://sdk.scdn.co/spotify-player.js';
       script.async = true;
 
+      let loadTimeout = setTimeout(() => {
+        console.error('❌ Spotify SDK load timeout');
+        reject(new Error('Spotify SDK load timeout'));
+      }, 15000); // 15 second timeout
+
       script.onload = () => {
-        const checkSpotify = () => {
-          if (window.Spotify) {
+        console.log('📦 Spotify script loaded, waiting for SDK...');
+        clearTimeout(loadTimeout);
+        
+        const checkSpotify = (attempts = 0) => {
+          if (window.Spotify?.Player) {
+            console.log('✅ Spotify SDK ready');
             resolve(window.Spotify);
+          } else if (attempts < 50) { // 5 seconds max
+            setTimeout(() => checkSpotify(attempts + 1), 100);
           } else {
-            setTimeout(checkSpotify, 100);
+            reject(new Error('Spotify SDK not available after script load'));
           }
         };
         checkSpotify();
       };
 
       script.onerror = () => {
+        clearTimeout(loadTimeout);
+        console.error('❌ Failed to load Spotify Web Playback SDK script');
         reject(new Error('Failed to load Spotify Web Playback SDK'));
       };
 
@@ -283,7 +316,7 @@ export function useSpotifyWebPlayback() {
     }
   }, [deviceId, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, isActive]);
 
-  // CRITICAL FIX 4: Streamlined player initialization
+  // CRITICAL FIX 4: Enhanced player initialization with timeout handling
   const initializePlayer = useCallback(async () => {
     if (initializationInProgress.current) {
       console.log('🔄 Initialization already in progress, skipping');
@@ -294,6 +327,12 @@ export function useSpotifyWebPlayback() {
 
     try {
       console.log('🔄 Initializing Spotify Player...');
+      
+      // Clear any existing ready timeout
+      if (readyTimeoutRef.current) {
+        clearTimeout(readyTimeoutRef.current);
+      }
+      
       const spotify = await loadSpotifyScript();
       
       // Test auth system first
@@ -306,6 +345,7 @@ export function useSpotifyWebPlayback() {
         return;
       }
 
+      console.log('🎵 Creating new Spotify Player instance...');
       const spotifyPlayer = new spotify.Player({
         name: SPOTIFY_PLAYER_NAME,
         getOAuthToken: async (cb) => {
@@ -323,11 +363,17 @@ export function useSpotifyWebPlayback() {
         volume: 0.5
       });
 
+      // CRITICAL FIX: Set up event listeners BEFORE connecting
+      console.log('📝 Setting up event listeners...');
+
       // Error handling
       spotifyPlayer.addListener('initialization_error', ({ message }) => {
         console.error('❌ Initialization error:', message);
         setError(`Initialization error: ${message}`);
         initializationInProgress.current = false;
+        if (readyTimeoutRef.current) {
+          clearTimeout(readyTimeoutRef.current);
+        }
       });
 
       spotifyPlayer.addListener('authentication_error', ({ message }) => {
@@ -336,10 +382,13 @@ export function useSpotifyWebPlayback() {
         
         if (retryCountRef.current < maxRetries) {
           retryCountRef.current++;
+          console.log(`🔄 Retrying authentication (${retryCountRef.current}/${maxRetries})...`);
           setTimeout(() => {
             initializationInProgress.current = false;
             initializePlayer();
           }, 3000);
+        } else {
+          initializationInProgress.current = false;
         }
       });
 
@@ -347,6 +396,9 @@ export function useSpotifyWebPlayback() {
         console.error('❌ Account error:', message);
         setError(`Account error: ${message}. Spotify Premium required.`);
         initializationInProgress.current = false;
+        if (readyTimeoutRef.current) {
+          clearTimeout(readyTimeoutRef.current);
+        }
       });
 
       spotifyPlayer.addListener('playback_error', ({ message }) => {
@@ -357,6 +409,7 @@ export function useSpotifyWebPlayback() {
 
       // State change handling
       spotifyPlayer.addListener('player_state_changed', (state) => {
+        console.log('🎵 Player state changed:', state ? 'has state' : 'no state');
         if (state) {
           const isNowPlaying = !state.paused;
           isPlayingRef.current = isNowPlaying;
@@ -377,23 +430,32 @@ export function useSpotifyWebPlayback() {
         }
       });
 
+      // CRITICAL FIX: Enhanced ready event handler
       spotifyPlayer.addListener('ready', async ({ device_id }) => {
-        console.log('✅ Spotify Player Ready with Device ID:', device_id);
+        console.log('🎉 Spotify Player Ready Event Fired! Device ID:', device_id);
+        
+        // Clear ready timeout
+        if (readyTimeoutRef.current) {
+          clearTimeout(readyTimeoutRef.current);
+        }
+        
         setDeviceId(device_id);
         setIsReady(true);
         setError(null);
         retryCountRef.current = 0;
         
-        // Wait for device registration
+        console.log('📱 Device registered, waiting for Spotify to recognize it...');
+        
+        // Wait a bit, then check registration
         setTimeout(async () => {
           const isRegistered = await waitForDeviceRegistration(device_id);
           
           if (isRegistered) {
-            console.log('✅ Device successfully registered');
+            console.log('✅ Device successfully registered and recognized by Spotify');
             setTimeout(() => checkActiveDevice(device_id), 2000);
           } else {
-            console.log('⚠️ Device registration timeout');
-            setError('Device registration delayed. Try playing a track to activate.');
+            console.log('⚠️ Device registration timeout - may need manual activation');
+            setError('Device registered but not yet active. Try playing a track to activate.');
           }
         }, 2000);
       });
@@ -406,13 +468,53 @@ export function useSpotifyWebPlayback() {
         stopPositionUpdates();
       });
 
-      // Connect
+      // CRITICAL FIX: Set up ready timeout BEFORE connecting
+      readyTimeoutRef.current = setTimeout(() => {
+        console.error('❌ Ready event timeout - SDK connected but ready event never fired');
+        
+        // Try to force-check if we actually have a working player
+        if (spotifyPlayer._options?.id) {
+          console.log('🔍 Player seems to exist, trying to get device ID manually...');
+          // Sometimes the ready event doesn't fire but the player works
+          // We can try to proceed without the ready event
+          setError('Connection established but device not fully ready. Try refreshing if issues persist.');
+          
+          // Set up with a placeholder device ID and see if it works
+          setIsReady(true);
+        } else {
+          setError('Failed to initialize player - ready event timeout. Please refresh the page.');
+        }
+        
+        initializationInProgress.current = false;
+      }, 30000); // 30 second timeout
+
+      // Connect to Spotify
+      console.log('🔗 Connecting to Spotify Web Playback SDK...');
       const success = await spotifyPlayer.connect();
       
       if (success) {
         console.log('✅ Successfully connected to Spotify!');
         setPlayer(spotifyPlayer);
         playerRef.current = spotifyPlayer;
+        
+        // Additional check: sometimes ready fires immediately
+        setTimeout(() => {
+          if (!isReady && spotifyPlayer._options?.id) {
+            console.log('🔍 Checking if player is actually ready...');
+            // The ready event might have been missed
+            spotifyPlayer._sendCommand('get_current_state', {}, (response) => {
+              if (response) {
+                console.log('🎉 Player appears to be working despite no ready event');
+                // Manually trigger ready state
+                setIsReady(true);
+                setError(null);
+                if (readyTimeoutRef.current) {
+                  clearTimeout(readyTimeoutRef.current);
+                }
+              }
+            });
+          }
+        }, 5000);
       } else {
         throw new Error('Failed to connect to Spotify Player');
       }
@@ -423,17 +525,22 @@ export function useSpotifyWebPlayback() {
       
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++;
+        console.log(`🔄 Retrying initialization (${retryCountRef.current}/${maxRetries})...`);
         setTimeout(() => {
           initializationInProgress.current = false;
           initializePlayer();
         }, 5000 * retryCountRef.current);
       } else {
         setError('Failed to initialize after multiple attempts. Please refresh.');
+        initializationInProgress.current = false;
       }
     } finally {
-      initializationInProgress.current = false;
+      if (readyTimeoutRef.current && isReady) {
+        clearTimeout(readyTimeoutRef.current);
+        initializationInProgress.current = false;
+      }
     }
-  }, [loadSpotifyScript, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, checkActiveDevice, waitForDeviceRegistration]);
+  }, [loadSpotifyScript, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, checkActiveDevice, waitForDeviceRegistration, isReady]);
 
   // Initialize when we have access token
   useEffect(() => {
@@ -452,7 +559,11 @@ export function useSpotifyWebPlayback() {
     return () => {
       mounted = false;
       stopPositionUpdates();
+      if (readyTimeoutRef.current) {
+        clearTimeout(readyTimeoutRef.current);
+      }
       if (playerRef.current) {
+        console.log('🔌 Disconnecting player...');
         playerRef.current.disconnect();
       }
     };
