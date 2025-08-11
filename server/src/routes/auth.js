@@ -1,14 +1,13 @@
-// server/routes/auth.js - Enhanced with better dual auth support and 404 fix
+// server/routes/auth.js - STREAMLINED VERSION with better error handling
 import express from 'express';
 import axios from 'axios';
 import querystring from 'querystring';
 import { ensureSpotifyToken } from '../middleware/ensureSpotifyToken.js';
-import { requireAuth } from '../middleware/requireAuth.js';
 
 const router = express.Router();
 const isProd = process.env.NODE_ENV === 'production';
 
-// Updated scopes to include Web Playback SDK requirements
+// Updated scopes for Web Playback SDK
 const scopes = [
   'user-read-private',
   'user-read-email',
@@ -22,7 +21,6 @@ const scopes = [
   'user-library-read'
 ].join(' ');
 
-// Helper function for consistent cookie options
 const getCookieOptions = (maxAge = null) => ({
   httpOnly: true,
   signed: true,
@@ -32,7 +30,6 @@ const getCookieOptions = (maxAge = null) => ({
   path: '/',
 });
 
-// Helper function for clearing cookies
 const getClearCookieOptions = () => ({
   httpOnly: true,
   signed: true,
@@ -41,12 +38,9 @@ const getClearCookieOptions = () => ({
   path: '/',
 });
 
-// 1. Redirect user to Spotify login
+// 1. Login redirect
 router.get('/login', (req, res) => {
   console.log('👉 GET /auth/login');
-  console.log('    using CLIENT_ID=', process.env.SPOTIFY_CLIENT_ID);
-  console.log('    using REDIRECT_URI=', process.env.REDIRECT_URI);
-  console.log('    request origin:', req.headers.origin);
   
   const state = Math.random().toString(36).substring(2, 15);
   
@@ -59,7 +53,6 @@ router.get('/login', (req, res) => {
     show_dialog: 'true'
   });
   
-  // Store state in signed cookie
   res.cookie('spotify_auth_state', state, {
     httpOnly: true,
     signed: true,
@@ -69,22 +62,18 @@ router.get('/login', (req, res) => {
     path: '/'
   });
   
-  console.log('🍪 Set spotify_auth_state cookie (signed)');
   res.redirect(`https://accounts.spotify.com/authorize?${params}`);
 });
 
-// 2. Handle callback & exchange code for tokens
+// 2. OAuth callback
 router.get('/callback', async (req, res) => {
   const code = req.query.code || null;
   const state = req.query.state || null;
   const storedState = req.signedCookies.spotify_auth_state || null;
 
   console.log('👉 GET /auth/callback');
-  console.log('    code:', !!code);
-  console.log('    state:', state);
-  console.log('    storedState:', storedState);
 
-  // Clear the state cookie
+  // Clear state cookie
   res.clearCookie('spotify_auth_state', {
     httpOnly: true,
     signed: true,
@@ -93,13 +82,13 @@ router.get('/callback', async (req, res) => {
     path: '/'
   });
 
-  if (state === null || state !== storedState) {
-    console.error('❌ State mismatch in OAuth callback');
+  if (state !== storedState) {
+    console.error('❌ State mismatch');
     return res.redirect(`${process.env.FRONTEND_URI}?error=state_mismatch`);
   }
 
   if (!code) {
-    console.error('❌ No authorization code received');
+    console.error('❌ No authorization code');
     return res.redirect(`${process.env.FRONTEND_URI}?error=access_denied`);
   }
 
@@ -118,22 +107,23 @@ router.get('/callback', async (req, res) => {
             `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
           ).toString('base64'),
         },
+        timeout: 10000
       }
     );
     
     const { access_token, refresh_token, expires_in } = response.data;
     console.log('✅ Successfully obtained tokens');
 
-    // Set cookies AND pass via URL for maximum compatibility
-    const accessTokenCookieOptions = getCookieOptions(expires_in * 1000);
-    res.cookie('spotify_token', access_token, accessTokenCookieOptions);
+    // Set cookies
+    const accessOptions = getCookieOptions(expires_in * 1000);
+    res.cookie('spotify_token', access_token, accessOptions);
     
     if (refresh_token) {
-      const refreshTokenCookieOptions = getCookieOptions(30 * 24 * 3600 * 1000);
-      res.cookie('refresh_token', refresh_token, refreshTokenCookieOptions);
+      const refreshOptions = getCookieOptions(30 * 24 * 3600 * 1000);
+      res.cookie('refresh_token', refresh_token, refreshOptions);
     }
 
-    // Create a secure token package for URL transfer
+    // Create token package for URL transfer
     const tokenPackage = {
       access_token,
       refresh_token,
@@ -142,10 +132,9 @@ router.get('/callback', async (req, res) => {
       timestamp: Date.now()
     };
 
-    // Encode the token package
     const encodedTokens = encodeURIComponent(JSON.stringify(tokenPackage));
     
-    console.log('🏠 Redirecting to frontend with token package');
+    console.log('🏠 Redirecting to frontend with tokens');
     res.redirect(`${process.env.FRONTEND_URI}?auth_tokens=${encodedTokens}`);
 
   } catch (err) {
@@ -154,55 +143,67 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-// 3. Store tokens endpoint (for URL-based auth)
+// 3. Store tokens from URL-based auth
 router.post('/store-tokens', async (req, res) => {
   const { access_token, refresh_token, expires_in } = req.body;
   
-  // FIXED: Also check Authorization header
   const authHeader = req.headers.authorization;
   const headerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   const tokenToVerify = access_token || headerToken;
   
   console.log('👉 POST /auth/store-tokens');
-  console.log('    has access_token in body:', !!access_token);
-  console.log('    has access_token in header:', !!headerToken);
-  console.log('    has refresh_token:', !!refresh_token);
 
   if (!tokenToVerify) {
     return res.status(400).json({ error: 'Missing access token' });
   }
 
   try {
-    // Verify the token before storing
+    // Verify token with Spotify
     const profile = await axios.get('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${tokenToVerify}` }
+      headers: { Authorization: `Bearer ${tokenToVerify}` },
+      timeout: 5000
     });
 
-    // Store in cookies (use the token from body if available, otherwise header)
+    // Store in cookies if provided in body
     if (access_token) {
-      const accessTokenCookieOptions = getCookieOptions(expires_in * 1000);
-      res.cookie('spotify_token', access_token, accessTokenCookieOptions);
+      const accessOptions = getCookieOptions(expires_in * 1000);
+      res.cookie('spotify_token', access_token, accessOptions);
       
       if (refresh_token) {
-        const refreshTokenCookieOptions = getCookieOptions(30 * 24 * 3600 * 1000);
-        res.cookie('refresh_token', refresh_token, refreshTokenCookieOptions);
+        const refreshOptions = getCookieOptions(30 * 24 * 3600 * 1000);
+        res.cookie('refresh_token', refresh_token, refreshOptions);
       }
     }
 
-    console.log('✅ Tokens stored successfully for user:', profile.data.display_name);
+    console.log('✅ Tokens stored for user:', profile.data.display_name);
     res.json({ success: true, user: profile.data });
 
   } catch (err) {
     console.error('❌ Token verification failed:', err.response?.status, err.response?.data);
+    
+    if (err.response?.status === 429) {
+      // Rate limited but token might be valid
+      console.log('⚠️ Rate limited during verification, assuming token valid');
+      if (access_token) {
+        const accessOptions = getCookieOptions(expires_in * 1000);
+        res.cookie('spotify_token', access_token, accessOptions);
+        
+        if (refresh_token) {
+          const refreshOptions = getCookieOptions(30 * 24 * 3600 * 1000);
+          res.cookie('refresh_token', refresh_token, refreshOptions);
+        }
+      }
+      return res.json({ success: true, user: { display_name: 'Rate Limited User' } });
+    }
+    
     res.status(401).json({ error: 'Invalid tokens' });
   }
 });
 
-// 4. Enhanced /me endpoint that works with both auth methods
+// 4. Get current user info
 router.get('/me', async (req, res) => {
   console.log('👉 GET /auth/me');
   
-  // Check for Authorization header first
   const authHeader = req.headers.authorization;
   let token = null;
   
@@ -222,7 +223,7 @@ router.get('/me', async (req, res) => {
   try {
     const response = await axios.get('https://api.spotify.com/v1/me', {
       headers: { Authorization: `Bearer ${token}` },
-      timeout: 5000 // FIXED: Add timeout
+      timeout: 5000
     });
     
     console.log('    ✅ authenticated as:', response.data.display_name);
@@ -231,9 +232,9 @@ router.get('/me', async (req, res) => {
   } catch (err) {
     console.log('    ❌ token invalid:', err.response?.status || err.message);
     
-    // FIXED: If header token failed but we have cookies, try to refresh
+    // If header token failed but we have refresh capability, try refresh
     if (authHeader && req.signedCookies.refresh_token) {
-      console.log('    🔄 Header token failed, attempting cookie-based refresh...');
+      console.log('    🔄 Attempting refresh with cookies...');
       return ensureSpotifyToken(req, res, () => {
         if (req.user) {
           return res.json({ user: req.user });
@@ -246,97 +247,100 @@ router.get('/me', async (req, res) => {
   }
 });
 
-// 5. Enhanced token endpoint for Web Playback SDK with better error handling
+// 5. Get token for Web Playback SDK
 router.get('/token', async (req, res) => {
   console.log('👉 GET /auth/token');
   
-  // Check for Authorization header first (for client-stored tokens)
   const authHeader = req.headers.authorization;
-  let token = null;
   
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.slice(7);
+    const token = authHeader.slice(7);
     console.log('    using header token');
-  } else {
-    // Fall back to ensureSpotifyToken middleware for cookie-based auth
-    return ensureSpotifyToken(req, res, () => {
-      const cookieToken = req.spotifyAccessToken;
-      const user = req.user;
+    
+    try {
+      // Quick verification
+      const response = await fetch('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5000)
+      });
       
-      if (!cookieToken) {
-        console.log('   ↳ no cookie token available');
-        return res.status(401).json({ 
-          error: 'No access token available',
-          reauth_required: true 
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('   ↳ header token verified for:', userData.display_name);
+        res.json({ 
+          access_token: token,
+          user: userData
+        });
+      } else if (response.status === 429) {
+        // Rate limited but probably valid
+        console.log('   ↳ header token rate limited but assuming valid');
+        res.json({ 
+          access_token: token,
+          user: { display_name: 'Rate Limited User' }
+        });
+      } else {
+        throw new Error(`Token verification failed: ${response.status}`);
+      }
+      
+    } catch (err) {
+      console.error('   ↳ header token verification failed:', err.message);
+      
+      // If header token failed but we have cookies, try cookie-based refresh
+      if (req.signedCookies.refresh_token) {
+        console.log('   🔄 Header failed, trying cookie refresh...');
+        return ensureSpotifyToken(req, res, () => {
+          const cookieToken = req.spotifyAccessToken;
+          const user = req.user;
+          
+          if (!cookieToken) {
+            return res.status(401).json({ 
+              error: 'No access token available after refresh',
+              reauth_required: true 
+            });
+          }
+          
+          console.log('   ↳ cookie refresh successful for:', user?.display_name);
+          res.json({ 
+            access_token: cookieToken,
+            user: user
+          });
         });
       }
       
-      console.log('   ↳ cookie token verified for user:', user?.display_name);
-      res.json({ 
-        access_token: cookieToken,
-        user: user
+      res.status(401).json({ 
+        error: 'Invalid access token',
+        reauth_required: true
       });
-    });
+    }
+    
+    return; // Important: prevent fall-through
   }
   
-  // Verify header token
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+  // Fall back to cookie-based auth with middleware
+  console.log('    using cookie-based auth');
+  return ensureSpotifyToken(req, res, () => {
+    const cookieToken = req.spotifyAccessToken;
+    const user = req.user;
     
-    const response = await fetch('https://api.spotify.com/v1/me', {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (response.ok) {
-      const userData = await response.json();
-      console.log('   ↳ header token verified for user:', userData.display_name);
-      res.json({ 
-        access_token: token,
-        user: userData
-      });
-    } else {
-      throw new Error(`Token verification failed: ${response.status}`);
-    }
-    
-  } catch (err) {
-    console.error('   ↳ header token verification failed:', err.message);
-    
-    // FIXED: If header token failed but we have cookies, try to refresh
-    if (req.signedCookies.refresh_token) {
-      console.log('   🔄 Header token failed, attempting cookie-based refresh...');
-      return ensureSpotifyToken(req, res, () => {
-        const cookieToken = req.spotifyAccessToken;
-        const user = req.user;
-        
-        if (!cookieToken) {
-          return res.status(401).json({ 
-            error: 'No access token available after refresh attempt',
-            reauth_required: true 
-          });
-        }
-        
-        console.log('   ↳ cookie refresh successful for user:', user?.display_name);
-        res.json({ 
-          access_token: cookieToken,
-          user: user
-        });
+    if (!cookieToken) {
+      console.log('   ↳ no cookie token available');
+      return res.status(401).json({ 
+        error: 'No access token available',
+        reauth_required: true 
       });
     }
     
-    res.status(401).json({ 
-      error: 'Invalid access token',
-      reauth_required: true
+    console.log('   ↳ cookie token verified for:', user?.display_name);
+    res.json({ 
+      access_token: cookieToken,
+      user: user
     });
-  }
+  });
 });
 
-// 6. Force reauthorization endpoint
+// 6. Force reauth
 router.get('/reauth', (req, res) => {
-  console.log('👉 GET /auth/reauth - clearing cookies and forcing reauth');
+  console.log('👉 GET /auth/reauth');
   
   const clearOpts = getClearCookieOptions();
   res.clearCookie('spotify_token', clearOpts);
@@ -345,7 +349,7 @@ router.get('/reauth', (req, res) => {
   res.redirect('/auth/login');
 });
 
-// 7. Logout endpoint
+// 7. Logout
 router.post('/logout', (req, res) => {
   console.log('👉 POST /auth/logout');
   
@@ -363,7 +367,7 @@ router.post('/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// 8. Enhanced debug endpoint
+// 8. Debug endpoint
 router.get('/debug', (req, res) => {
   console.log('👉 GET /auth/debug');
   
@@ -375,23 +379,13 @@ router.get('/debug', (req, res) => {
     signedCookies: req.signedCookies,
     headers: {
       origin: req.headers.origin,
-      referer: req.headers.referer,
       'user-agent': req.headers['user-agent']?.substring(0, 100),
-      cookie: req.headers.cookie ? `present (${req.headers.cookie.length} chars)` : 'missing',
-      authorization: hasHeaderToken ? 'Bearer token present' : 'no auth header',
-      cookiePreview: req.headers.cookie?.substring(0, 200)
+      authorization: hasHeaderToken ? 'Bearer token present' : 'no auth header'
     },
     env: {
       NODE_ENV: process.env.NODE_ENV,
       FRONTEND_URI: process.env.FRONTEND_URI,
       isProd: isProd
-    },
-    cookieSettings: {
-      sameSite: isProd ? 'none' : 'lax',
-      secure: isProd,
-      httpOnly: true,
-      signed: true,
-      path: '/'
     },
     authMethods: {
       headerToken: hasHeaderToken,

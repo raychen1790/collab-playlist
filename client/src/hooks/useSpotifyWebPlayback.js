@@ -4,7 +4,7 @@ import { AuthContext } from '../contexts/AuthContext.jsx';
 
 const SPOTIFY_PLAYER_NAME = 'PlaylistVotes Player';
 
-// Enhanced rate limiting helpers
+// Simplified rate limiter focused on Spotify API limits
 class RateLimiter {
   constructor() {
     this.requests = new Map();
@@ -13,7 +13,6 @@ class RateLimiter {
 
   async waitForRateLimit(endpoint) {
     const now = Date.now();
-    const key = endpoint || 'global';
     
     if (now < this.globalCooldown) {
       const waitTime = this.globalCooldown - now;
@@ -21,13 +20,13 @@ class RateLimiter {
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
+    const key = endpoint || 'global';
     const lastRequest = this.requests.get(key) || 0;
-    const minInterval = key === '/me/player' ? 5000 : 1000; // Increased player check interval
+    const minInterval = 1000; // 1 second between requests
     const timeSinceLastRequest = now - lastRequest;
     
     if (timeSinceLastRequest < minInterval) {
       const waitTime = minInterval - timeSinceLastRequest;
-      console.log(`⏳ Endpoint rate limit for ${key}: ${waitTime}ms`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
@@ -35,8 +34,8 @@ class RateLimiter {
   }
 
   handleRateLimitError() {
-    this.globalCooldown = Date.now() + 10000; // Increased to 10s
-    console.log('🚫 Rate limited - setting 10s global cooldown');
+    this.globalCooldown = Date.now() + 5000; // 5 second cooldown
+    console.log('🚫 Rate limited - setting 5s global cooldown');
   }
 }
 
@@ -54,12 +53,10 @@ export function useSpotifyWebPlayback() {
   const playerRef = useRef(null);
   const retryCountRef = useRef(0);
   const maxRetries = 3;
-  const tokenRef = useRef(null);
-  const lastTokenRefresh = useRef(0);
-  const deviceRegistrationAttempts = useRef(0);
-  const maxDeviceRegistrationAttempts = 5;
+  const initializationInProgress = useRef(false);
+  const lastSuccessfulToken = useRef(null);
   
-  // Real-time position tracking
+  // Position tracking
   const positionUpdateIntervalRef = useRef(null);
   const lastPositionRef = useRef(0);
   const lastUpdateTimeRef = useRef(Date.now());
@@ -67,61 +64,43 @@ export function useSpotifyWebPlayback() {
 
   const { apiRequest, accessToken, getFreshToken } = useContext(AuthContext);
 
-  // CRITICAL FIX: Enhanced token getter with better error handling
+  // CRITICAL FIX 1: Simplified token getter that prevents conflicts
   const getValidTokenForSpotify = useCallback(async () => {
     console.log('🎵 Getting token for Spotify Web Playback...');
     
     try {
-      // Check if current token is still valid and not too old
-      if (tokenRef.current && Date.now() - lastTokenRefresh.current < 45 * 60 * 1000) {
-        console.log('✅ Using cached token (still valid)');
-        return tokenRef.current;
-      }
-
-      // Method 1: Try getFreshToken from AuthContext first
+      // Try getFreshToken first (this handles both header and cookie tokens)
       const freshToken = await getFreshToken();
-      if (freshToken && freshToken !== tokenRef.current) {
-        console.log('✅ Got fresh token from AuthContext.getFreshToken()');
-        tokenRef.current = freshToken;
-        lastTokenRefresh.current = Date.now();
-        return freshToken;
-      }
-
-      // Method 2: If that fails, try apiRequest to /auth/token directly
-      console.log('🔄 getFreshToken returned same token, trying direct apiRequest...');
-      const response = await apiRequest('/auth/token', { method: 'GET' });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.access_token && data.access_token !== tokenRef.current) {
-          console.log('✅ Got new token from direct /auth/token call');
-          tokenRef.current = data.access_token;
-          lastTokenRefresh.current = Date.now();
-          return data.access_token;
+      if (freshToken) {
+        // Verify the token works with Spotify
+        const testResponse = await fetch('https://api.spotify.com/v1/me', {
+          headers: { 'Authorization': `Bearer ${freshToken}` },
+          signal: AbortSignal.timeout(5000)
+        });
+        
+        if (testResponse.ok) {
+          console.log('✅ Token verified with Spotify API');
+          lastSuccessfulToken.current = freshToken;
+          return freshToken;
+        } else if (testResponse.status === 429) {
+          console.log('⚠️ Rate limited but token should be valid');
+          lastSuccessfulToken.current = freshToken;
+          return freshToken;
         }
       }
 
-      // Method 3: Use current accessToken if available
-      if (accessToken) {
-        console.log('⚠️ Using current accessToken as fallback');
-        tokenRef.current = accessToken;
-        return accessToken;
+      // Fallback to last successful token
+      if (lastSuccessfulToken.current) {
+        console.log('⚠️ Using last successful token as fallback');
+        return lastSuccessfulToken.current;
       }
 
-      throw new Error('No valid token available through any method');
+      throw new Error('No valid token available');
     } catch (err) {
-      console.error('❌ All token methods failed:', err);
+      console.error('❌ Token getter failed:', err);
       throw new Error(`Token error: ${err.message}`);
     }
-  }, [getFreshToken, apiRequest, accessToken]);
-
-  // Update token reference when accessToken changes
-  useEffect(() => {
-    if (accessToken) {
-      tokenRef.current = accessToken;
-      console.log('🔍 Token updated in Web Playback hook');
-    }
-  }, [accessToken]);
+  }, [getFreshToken]);
 
   // Load Spotify script
   const loadSpotifyScript = useCallback(() => {
@@ -154,16 +133,15 @@ export function useSpotifyWebPlayback() {
     });
   }, []);
 
-  // Position tracking (unchanged)
+  // Position tracking
   const startPositionUpdates = useCallback(() => {
     if (positionUpdateIntervalRef.current) {
       clearInterval(positionUpdateIntervalRef.current);
     }
 
-    positionUpdateIntervalRef.current = setInterval(async () => {
+    const mainInterval = setInterval(async () => {
       if (player && isActive && isPlayingRef.current) {
         try {
-          await rateLimiter.waitForRateLimit('getCurrentState');
           const state = await player.getCurrentState();
           if (state && !state.paused) {
             lastPositionRef.current = state.position;
@@ -176,12 +154,10 @@ export function useSpotifyWebPlayback() {
             }));
           }
         } catch (err) {
-          if (!err.message.includes('rate limit')) {
-            console.error('Error getting current state:', err);
-          }
+          console.error('Error getting current state:', err);
         }
       }
-    }, 10000); // Increased interval
+    }, 5000);
 
     const smoothInterval = setInterval(() => {
       if (isPlayingRef.current && playerState?.duration) {
@@ -204,27 +180,20 @@ export function useSpotifyWebPlayback() {
       }
     }, 500);
 
-    positionUpdateIntervalRef.current = {
-      main: positionUpdateIntervalRef.current,
-      smooth: smoothInterval
-    };
+    positionUpdateIntervalRef.current = { main: mainInterval, smooth: smoothInterval };
   }, [player, isActive, playerState?.duration]);
 
   const stopPositionUpdates = useCallback(() => {
     if (positionUpdateIntervalRef.current) {
-      if (typeof positionUpdateIntervalRef.current === 'object') {
-        clearInterval(positionUpdateIntervalRef.current.main);
-        clearInterval(positionUpdateIntervalRef.current.smooth);
-      } else {
-        clearInterval(positionUpdateIntervalRef.current);
-      }
+      clearInterval(positionUpdateIntervalRef.current.main);
+      clearInterval(positionUpdateIntervalRef.current.smooth);
       positionUpdateIntervalRef.current = null;
     }
   }, []);
 
-  // CRITICAL FIX: Enhanced device registration check
-  const waitForDeviceRegistration = useCallback(async (deviceId, maxWaitTime = 30000) => {
-    console.log('🔄 Waiting for device to be registered with Spotify...');
+  // CRITICAL FIX 2: Wait for device registration with better error handling
+  const waitForDeviceRegistration = useCallback(async (deviceId, maxWaitTime = 20000) => {
+    console.log('🔄 Waiting for device registration...');
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitTime) {
@@ -233,9 +202,8 @@ export function useSpotifyWebPlayback() {
         const token = await getValidTokenForSpotify();
         
         const response = await fetch('https://api.spotify.com/v1/me/player/devices', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(8000)
         });
 
         if (response.ok) {
@@ -243,9 +211,11 @@ export function useSpotifyWebPlayback() {
           const ourDevice = data.devices?.find(d => d.id === deviceId);
           
           if (ourDevice) {
-            console.log('✅ Device found in Spotify devices list:', ourDevice.name);
+            console.log('✅ Device registered:', ourDevice.name);
             return true;
           }
+        } else if (response.status === 429) {
+          rateLimiter.handleRateLimitError();
         }
         
         console.log('⏳ Device not yet registered, waiting...');
@@ -261,29 +231,21 @@ export function useSpotifyWebPlayback() {
     return false;
   }, [getValidTokenForSpotify]);
 
-  // CRITICAL FIX: Enhanced device checking with better 404 handling
+  // CRITICAL FIX 3: Improved active device checking
   const checkActiveDevice = useCallback(async (deviceIdToCheck = deviceId) => {
     if (!deviceIdToCheck) return false;
 
     try {
       await rateLimiter.waitForRateLimit('/me/player');
-      
       const token = await getValidTokenForSpotify();
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      
-      const playerResponse = await fetch('https://api.spotify.com/v1/me/player', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        signal: controller.signal
+      const response = await fetch('https://api.spotify.com/v1/me/player', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000)
       });
 
-      clearTimeout(timeoutId);
-
-      if (playerResponse.ok) {
-        const data = await playerResponse.json();
+      if (response.ok) {
+        const data = await response.json();
         const isOurDeviceActive = data.device?.id === deviceIdToCheck;
         setIsActive(isOurDeviceActive);
         
@@ -296,51 +258,21 @@ export function useSpotifyWebPlayback() {
         }
         
         return isOurDeviceActive;
-      } else if (playerResponse.status === 204) {
-        // No active devices - this is normal
+      } else if (response.status === 204) {
+        // No active devices
         setIsActive(false);
         isPlayingRef.current = false;
         stopPositionUpdates();
         return false;
-      } else if (playerResponse.status === 404) {
-        console.log('⚠️ Got 404 when checking device - device might not be registered yet');
-        
-        // Try to check if device is in the devices list
-        try {
-          await rateLimiter.waitForRateLimit('/me/player/devices');
-          const devicesResponse = await fetch('https://api.spotify.com/v1/me/player/devices', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          
-          if (devicesResponse.ok) {
-            const devicesData = await devicesResponse.json();
-            const ourDevice = devicesData.devices?.find(d => d.id === deviceIdToCheck);
-            
-            if (ourDevice) {
-              console.log('✅ Device exists in devices list but not active');
-              setIsActive(false);
-              return false;
-            } else {
-              console.log('❌ Device not found in devices list - might need re-initialization');
-              deviceRegistrationAttempts.current++;
-              
-              if (deviceRegistrationAttempts.current >= maxDeviceRegistrationAttempts) {
-                setError('Device not recognized by Spotify. Please refresh the page.');
-                return false;
-              }
-            }
-          }
-        } catch (devicesError) {
-          console.error('Error checking devices list:', devicesError);
-        }
-        
+      } else if (response.status === 404) {
+        console.log('⚠️ Got 404 when checking device - device might not be registered');
+        setIsActive(false);
         return false;
-      } else if (playerResponse.status === 429) {
+      } else if (response.status === 429) {
         rateLimiter.handleRateLimitError();
-        console.log('Device check rate limited');
-        return isActive;
+        return isActive; // Return current state
       } else {
-        console.error('Failed to check active device:', playerResponse.status);
+        console.error('Failed to check active device:', response.status);
         return isActive;
       }
     } catch (err) {
@@ -351,23 +283,23 @@ export function useSpotifyWebPlayback() {
     }
   }, [deviceId, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, isActive]);
 
-  // CRITICAL FIX: Enhanced player initialization with device registration verification
+  // CRITICAL FIX 4: Streamlined player initialization
   const initializePlayer = useCallback(async () => {
+    if (initializationInProgress.current) {
+      console.log('🔄 Initialization already in progress, skipping');
+      return;
+    }
+
+    initializationInProgress.current = true;
+
     try {
       console.log('🔄 Initializing Spotify Player...');
       const spotify = await loadSpotifyScript();
       
-      // Verify auth system is working first
+      // Test auth system first
       try {
-        const response = await apiRequest('/auth/me', { method: 'GET' });
-        if (!response.ok) {
-          throw new Error('Auth system not ready');
-        }
-        const authData = await response.json();
-        if (!authData.user) {
-          throw new Error('User not authenticated');
-        }
-        console.log('✅ Auth system verified, user:', authData.user.display_name);
+        const testToken = await getValidTokenForSpotify();
+        console.log('✅ Auth system working, token obtained');
       } catch (authErr) {
         console.error('❌ Auth system check failed:', authErr);
         setError('Authentication system not ready. Please refresh the page.');
@@ -380,7 +312,7 @@ export function useSpotifyWebPlayback() {
           try {
             console.log('🔄 Spotify SDK requesting OAuth token...');
             const freshToken = await getValidTokenForSpotify();
-            console.log('✅ Providing fresh token to Spotify SDK');
+            console.log('✅ Providing token to Spotify SDK');
             cb(freshToken);
           } catch (err) {
             console.error('❌ Failed to get token for Spotify Player:', err);
@@ -391,34 +323,30 @@ export function useSpotifyWebPlayback() {
         volume: 0.5
       });
 
-      // Enhanced error handling
+      // Error handling
       spotifyPlayer.addListener('initialization_error', ({ message }) => {
-        console.error('❌ Failed to initialize:', message);
+        console.error('❌ Initialization error:', message);
         setError(`Initialization error: ${message}`);
+        initializationInProgress.current = false;
       });
 
       spotifyPlayer.addListener('authentication_error', ({ message }) => {
-        console.error('❌ Authentication error in Spotify Player:', message);
-        setError(`Spotify authentication error: ${message}`);
+        console.error('❌ Authentication error:', message);
+        setError(`Authentication error: ${message}`);
         
-        setTimeout(async () => {
-          console.log('🔄 Attempting to refresh auth after Spotify auth error...');
-          try {
-            await getValidTokenForSpotify();
-            if (retryCountRef.current < maxRetries) {
-              retryCountRef.current++;
-              console.log(`Retrying after auth error (${retryCountRef.current}/${maxRetries})...`);
-              setTimeout(() => initializePlayer(), 3000);
-            }
-          } catch (refreshErr) {
-            setError('Authentication failed. Please refresh and try again.');
-          }
-        }, 2000);
+        if (retryCountRef.current < maxRetries) {
+          retryCountRef.current++;
+          setTimeout(() => {
+            initializationInProgress.current = false;
+            initializePlayer();
+          }, 3000);
+        }
       });
 
       spotifyPlayer.addListener('account_error', ({ message }) => {
-        console.error('❌ Failed to validate Spotify account:', message);
-        setError(`Account error: ${message}. Spotify Premium is required.`);
+        console.error('❌ Account error:', message);
+        setError(`Account error: ${message}. Spotify Premium required.`);
+        initializationInProgress.current = false;
       });
 
       spotifyPlayer.addListener('playback_error', ({ message }) => {
@@ -427,25 +355,19 @@ export function useSpotifyWebPlayback() {
         setTimeout(() => setError(null), 5000);
       });
 
-      // Enhanced state change handling
+      // State change handling
       spotifyPlayer.addListener('player_state_changed', (state) => {
-        console.log('🎵 Player state changed:', state ? 'playing' : 'stopped');
-        
         if (state) {
-          const wasPlaying = isPlayingRef.current;
           const isNowPlaying = !state.paused;
-          
           isPlayingRef.current = isNowPlaying;
           lastPositionRef.current = state.position;
           lastUpdateTimeRef.current = Date.now();
           
           setPlayerState(state);
           
-          if (isNowPlaying && !wasPlaying) {
-            console.log('▶️ Starting position updates');
+          if (isNowPlaying) {
             startPositionUpdates();
-          } else if (!isNowPlaying && wasPlaying) {
-            console.log('⏸️ Stopping position updates');
+          } else {
             stopPositionUpdates();
           }
         } else {
@@ -461,33 +383,30 @@ export function useSpotifyWebPlayback() {
         setIsReady(true);
         setError(null);
         retryCountRef.current = 0;
-        deviceRegistrationAttempts.current = 0;
         
-        // CRITICAL FIX: Wait for device to be properly registered
-        console.log('🔄 Waiting for device registration...');
-        const isRegistered = await waitForDeviceRegistration(device_id);
-        
-        if (isRegistered) {
-          console.log('✅ Device successfully registered with Spotify');
-          // Check if device is active after a delay
-          setTimeout(() => {
-            checkActiveDevice(device_id);
-          }, 3000);
-        } else {
-          console.log('⚠️ Device registration timeout - will retry on user interaction');
-          setError('Device registration delayed. Try playing a track to activate.');
-        }
+        // Wait for device registration
+        setTimeout(async () => {
+          const isRegistered = await waitForDeviceRegistration(device_id);
+          
+          if (isRegistered) {
+            console.log('✅ Device successfully registered');
+            setTimeout(() => checkActiveDevice(device_id), 2000);
+          } else {
+            console.log('⚠️ Device registration timeout');
+            setError('Device registration delayed. Try playing a track to activate.');
+          }
+        }, 2000);
       });
 
       spotifyPlayer.addListener('not_ready', ({ device_id }) => {
-        console.log('❌ Spotify Player Not Ready:', device_id);
+        console.log('❌ Device not ready:', device_id);
         setIsReady(false);
         setIsActive(false);
         isPlayingRef.current = false;
         stopPositionUpdates();
       });
 
-      // Connect to Spotify
+      // Connect
       const success = await spotifyPlayer.connect();
       
       if (success) {
@@ -499,30 +418,35 @@ export function useSpotifyWebPlayback() {
       }
 
     } catch (err) {
-      console.error('❌ Error initializing Spotify player:', err);
+      console.error('❌ Error initializing player:', err);
       setError(err.message);
       
       if (retryCountRef.current < maxRetries) {
         retryCountRef.current++;
-        console.log(`Retrying initialization (${retryCountRef.current}/${maxRetries})...`);
-        setTimeout(() => initializePlayer(), 5000 * retryCountRef.current);
+        setTimeout(() => {
+          initializationInProgress.current = false;
+          initializePlayer();
+        }, 5000 * retryCountRef.current);
       } else {
-        setError('Failed to initialize Spotify Player after multiple attempts. Please refresh the page.');
+        setError('Failed to initialize after multiple attempts. Please refresh.');
       }
+    } finally {
+      initializationInProgress.current = false;
     }
-  }, [loadSpotifyScript, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, checkActiveDevice, apiRequest, waitForDeviceRegistration]);
+  }, [loadSpotifyScript, getValidTokenForSpotify, startPositionUpdates, stopPositionUpdates, checkActiveDevice, waitForDeviceRegistration]);
 
   // Initialize when we have access token
   useEffect(() => {
     let mounted = true;
 
-    if (accessToken && mounted) {
+    if (accessToken && !player && mounted) {
       console.log('🔍 Access token available, initializing player...');
+      // Small delay to ensure auth is fully ready
       setTimeout(() => {
         if (mounted) {
           initializePlayer();
         }
-      }, 3000); // Increased delay for better stability
+      }, 2000);
     }
 
     return () => {
@@ -532,43 +456,38 @@ export function useSpotifyWebPlayback() {
         playerRef.current.disconnect();
       }
     };
-  }, [accessToken, initializePlayer, stopPositionUpdates]);
+  }, [accessToken, player, initializePlayer, stopPositionUpdates]);
 
-  // Periodic device checking with better error handling
+  // Periodic device checking
   useEffect(() => {
     if (!isReady || !deviceId) return;
 
     const interval = setInterval(() => {
       checkActiveDevice(deviceId);
-    }, 30000); // Increased to 30 seconds
+    }, 30000);
     
     return () => clearInterval(interval);
   }, [isReady, deviceId, checkActiveDevice]);
 
-  // CRITICAL FIX: Enhanced transfer playback with device registration check
+  // CRITICAL FIX 5: Improved transfer playback
   const transferPlayback = useCallback(async () => {
     if (!deviceId) {
-      console.error('Cannot transfer playback: missing deviceId');
+      console.error('Cannot transfer: missing deviceId');
       return false;
     }
 
-    console.log('🔄 Attempting to transfer playback to device:', deviceId);
+    console.log('🔄 Transferring playback to device:', deviceId);
 
     try {
-      // First, ensure device is registered
+      // Ensure device is registered
       const isRegistered = await waitForDeviceRegistration(deviceId, 10000);
       if (!isRegistered) {
-        console.log('❌ Device not registered, cannot transfer playback');
         setError('Device not recognized by Spotify. Please refresh the page.');
         return false;
       }
 
       await rateLimiter.waitForRateLimit('/me/player');
-      
       const token = await getValidTokenForSpotify();
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased timeout
       
       const response = await fetch('https://api.spotify.com/v1/me/player', {
         method: 'PUT',
@@ -580,53 +499,37 @@ export function useSpotifyWebPlayback() {
           device_ids: [deviceId],
           play: false,
         }),
-        signal: controller.signal
+        signal: AbortSignal.timeout(15000)
       });
 
-      clearTimeout(timeoutId);
-
       if (response.ok || response.status === 202) {
-        console.log('✅ Transfer playback request successful');
+        console.log('✅ Transfer request successful');
         
-        // Wait and check multiple times with exponential backoff
-        let attempts = 0;
-        const maxAttempts = 6;
-        
-        const checkTransfer = async () => {
-          attempts++;
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempts)); // Exponential delay
+        // Check for activation multiple times
+        for (let i = 0; i < 5; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
           const isActive = await checkActiveDevice(deviceId);
-          
           if (isActive) {
-            console.log('✅ Successfully transferred playback to our device');
+            console.log('✅ Device activated successfully');
             return true;
-          } else if (attempts < maxAttempts) {
-            console.log(`⏳ Transfer attempt ${attempts}/${maxAttempts} - device not yet active`);
-            return checkTransfer();
-          } else {
-            console.log('⚠️ Transfer request sent but device activation timeout');
-            return false;
           }
-        };
+        }
         
-        setTimeout(() => checkTransfer(), 1000);
-        return true;
+        console.log('⚠️ Transfer sent but device not yet active');
+        return true; // Consider successful even if not immediately active
       } else if (response.status === 404) {
         const errorText = await response.text().catch(() => 'Device not found');
-        console.error('❌ Transfer playback got 404:', errorText);
-        setError('Device not recognized by Spotify. Try refreshing the page.');
-        
-        // Reset device registration attempts to trigger re-check
-        deviceRegistrationAttempts.current = 0;
+        console.error('❌ Transfer failed with 404:', errorText);
+        setError('Device not found by Spotify. Try refreshing the page.');
         return false;
       } else if (response.status === 429) {
         rateLimiter.handleRateLimitError();
-        setError('Rate limited. Please wait a moment before trying again.');
+        setError('Rate limited. Please wait before trying again.');
         return false;
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
-        console.error('Failed to transfer playback:', response.status, errorText);
-        setError(`Failed to activate device: ${response.status} - ${errorText}`);
+        console.error('Transfer failed:', response.status, errorText);
+        setError(`Failed to activate device: ${response.status}`);
         return false;
       }
     } catch (err) {
@@ -638,32 +541,25 @@ export function useSpotifyWebPlayback() {
     }
   }, [deviceId, getValidTokenForSpotify, checkActiveDevice, waitForDeviceRegistration]);
 
-  // Enhanced playTrack with better device management
+  // Play track with better error handling
   const playTrack = useCallback(async (spotifyUri, positionMs = 0) => {
     if (!player || !deviceId) {
-      console.error('Player not ready or missing deviceId');
       setError('Player not ready. Please wait or refresh the page.');
       return false;
     }
 
     if (!isActive) {
-      console.log('Device not active, attempting to transfer playback...');
+      console.log('Device not active, transferring playback...');
       const transferred = await transferPlayback();
       if (!transferred) {
         return false;
       }
-      
-      // Wait longer for transfer to complete
-      await new Promise(resolve => setTimeout(resolve, 6000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
     }
 
     try {
       await rateLimiter.waitForRateLimit('/me/player/play');
-      
       const token = await getValidTokenForSpotify();
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
       
       const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
         method: 'PUT',
@@ -675,30 +571,28 @@ export function useSpotifyWebPlayback() {
           uris: [spotifyUri],
           position_ms: positionMs,
         }),
-        signal: controller.signal
+        signal: AbortSignal.timeout(15000)
       });
 
-      clearTimeout(timeoutId);
-
       if (response.ok || response.status === 202) {
-        console.log('✅ Successfully started playback');
+        console.log('✅ Playback started successfully');
         isPlayingRef.current = true;
         startPositionUpdates();
-        setError(null); // Clear any previous errors
+        setError(null);
         return true;
       } else if (response.status === 404) {
         const errorText = await response.text().catch(() => 'Device not found');
-        console.error('❌ Playback got 404:', errorText);
-        setError('Device not found. Please activate device first or refresh the page.');
+        console.error('❌ Playback failed with 404:', errorText);
+        setError('Device not found. Please activate device or refresh.');
         return false;
       } else if (response.status === 429) {
         rateLimiter.handleRateLimitError();
-        setError('Rate limited. Please wait before playing another track.');
+        setError('Rate limited. Please wait before playing.');
         return false;
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
-        console.error('Failed to start playback:', response.status, errorText);
-        setError(`Playback failed: ${response.status} - ${errorText}`);
+        console.error('Playback failed:', response.status, errorText);
+        setError(`Playback failed: ${response.status}`);
         return false;
       }
     } catch (err) {
@@ -710,25 +604,14 @@ export function useSpotifyWebPlayback() {
     }
   }, [player, deviceId, isActive, transferPlayback, startPositionUpdates, getValidTokenForSpotify]);
 
-  // Other controls remain the same but with better error handling
+  // Other controls with error handling
   const togglePlay = useCallback(async () => {
     if (!player) {
       setError('Player not ready');
       return;
     }
     try {
-      await rateLimiter.waitForRateLimit('togglePlay');
       await player.togglePlay();
-      setTimeout(async () => {
-        try {
-          const state = await player.getCurrentState();
-          if (state) {
-            isPlayingRef.current = !state.paused;
-          }
-        } catch (err) {
-          console.error('Error getting state after toggle:', err);
-        }
-      }, 100);
     } catch (err) {
       console.error('Error toggling play:', err);
       setError('Failed to toggle playback');
@@ -738,10 +621,9 @@ export function useSpotifyWebPlayback() {
   const nextTrack = useCallback(async () => {
     if (player) {
       try {
-        await rateLimiter.waitForRateLimit('nextTrack');
         await player.nextTrack();
       } catch (err) {
-        console.error('Error skipping to next track:', err);
+        console.error('Error skipping to next:', err);
         setError('Failed to skip track');
       }
     }
@@ -750,10 +632,9 @@ export function useSpotifyWebPlayback() {
   const previousTrack = useCallback(async () => {
     if (player) {
       try {
-        await rateLimiter.waitForRateLimit('previousTrack');
         await player.previousTrack();
       } catch (err) {
-        console.error('Error skipping to previous track:', err);
+        console.error('Error going to previous:', err);
         setError('Failed to go to previous track');
       }
     }
@@ -762,7 +643,6 @@ export function useSpotifyWebPlayback() {
   const seek = useCallback(async (positionMs) => {
     if (player) {
       try {
-        await rateLimiter.waitForRateLimit('seek');
         await player.seek(positionMs);
         lastPositionRef.current = positionMs;
         lastUpdateTimeRef.current = Date.now();
@@ -780,7 +660,6 @@ export function useSpotifyWebPlayback() {
   const setPlayerVolume = useCallback(async (volume) => {
     if (player) {
       try {
-        await rateLimiter.waitForRateLimit('setVolume');
         await player.setVolume(volume);
         setVolume(volume);
       } catch (err) {
@@ -793,21 +672,14 @@ export function useSpotifyWebPlayback() {
   const getCurrentState = useCallback(async () => {
     if (player) {
       try {
-        await rateLimiter.waitForRateLimit('getCurrentState');
         return await player.getCurrentState();
       } catch (err) {
-        console.error('Error getting current state:', err);
+        console.error('Error getting state:', err);
         return null;
       }
     }
     return null;
   }, [player]);
-
-  useEffect(() => {
-    return () => {
-      stopPositionUpdates();
-    };
-  }, [stopPositionUpdates]);
 
   return {
     player,
@@ -817,7 +689,6 @@ export function useSpotifyWebPlayback() {
     playerState,
     volume,
     error,
-    accessToken: tokenRef.current,
     
     playTrack,
     togglePlay,
