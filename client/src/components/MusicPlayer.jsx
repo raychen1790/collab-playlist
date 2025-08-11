@@ -1,4 +1,4 @@
-// client/src/components/MusicPlayer.jsx
+// client/src/components/MusicPlayer.jsx - ENHANCED VERSION
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Play, 
@@ -10,7 +10,11 @@ import {
   VolumeX,
   List,
   X,
-  Music
+  Music,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  Loader
 } from 'lucide-react';
 
 export default function MusicPlayer({ 
@@ -35,12 +39,16 @@ export default function MusicPlayer({
   transferPlayback,
   playQueue = [],
   currentTrackIndex = 0,
-  onPlayTrackFromQueue
+  onPlayTrackFromQueue,
+  onRetryConnection, // New prop for retrying connection
+  deviceId // New prop to show device info
 }) {
   const [showQueue, setShowQueue] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [previousVolume, setPreviousVolume] = useState(volume);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [showDeviceInfo, setShowDeviceInfo] = useState(false);
   const progressRef = useRef(null);
   const volumeRef = useRef(null);
 
@@ -98,6 +106,16 @@ export default function MusicPlayer({
     }
   }, [isMuted, volume, previousVolume, onVolumeChange]);
 
+  // Enhanced transfer playback with loading state
+  const handleTransferPlayback = useCallback(async () => {
+    setIsTransferring(true);
+    try {
+      await transferPlayback();
+    } finally {
+      setIsTransferring(false);
+    }
+  }, [transferPlayback]);
+
   // Global mouse events for dragging
   const handleGlobalMouseMove = useCallback((e) => {
     if (isDragging) {
@@ -124,6 +142,54 @@ export default function MusicPlayer({
   const progressPercent = duration ? (position / duration) * 100 : 0;
   const effectiveVolume = isMuted ? 0 : volume;
 
+  // Determine connection status for better UX
+  const getConnectionStatus = () => {
+    if (!spotifyReady) {
+      return { type: 'connecting', message: 'Connecting to Spotify...', color: 'yellow' };
+    }
+    if (spotifyError) {
+      if (spotifyError.includes('Device not found') || spotifyError.includes('not recognized')) {
+        return { 
+          type: 'device_error', 
+          message: 'Device not recognized by Spotify', 
+          color: 'red',
+          action: 'refresh'
+        };
+      }
+      if (spotifyError.includes('Rate limited')) {
+        return { 
+          type: 'rate_limited', 
+          message: 'Rate limited - please wait', 
+          color: 'orange' 
+        };
+      }
+      return { 
+        type: 'error', 
+        message: spotifyError, 
+        color: 'red',
+        action: 'retry'
+      };
+    }
+    if (spotifyReady && !spotifyActive) {
+      return { 
+        type: 'inactive', 
+        message: 'Device ready - click Activate to play music', 
+        color: 'blue',
+        action: 'activate'
+      };
+    }
+    if (spotifyReady && spotifyActive) {
+      return { 
+        type: 'active', 
+        message: `Ready to play on ${deviceId ? 'PlaylistVotes Player' : 'this device'}`, 
+        color: 'green' 
+      };
+    }
+    return { type: 'unknown', message: 'Checking connection...', color: 'gray' };
+  };
+
+  const connectionStatus = getConnectionStatus();
+
   // Debug logging
   console.log('🎵 MusicPlayer Debug:', {
     position,
@@ -132,7 +198,8 @@ export default function MusicPlayer({
     isPlaying,
     currentTrack: currentTrack?.title || currentTrack?.name,
     spotifyReady,
-    spotifyActive
+    spotifyActive,
+    connectionStatus: connectionStatus.type
   });
 
   return (
@@ -201,7 +268,7 @@ export default function MusicPlayer({
                   return null;
                 }
                 
-                const isCurrentInQueue = displayIndex === 0; // First item is always current
+                const isCurrentInQueue = displayIndex === 0;
                 
                 return (
                   <div
@@ -294,6 +361,118 @@ export default function MusicPlayer({
         </div>
       )}
 
+      {/* Device Info Overlay */}
+      {showDeviceInfo && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            right: '0',
+            bottom: '0',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: '50',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '400px',
+            width: '100%'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '16px'
+            }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0' }}>
+                Device Status
+              </h3>
+              <button
+                onClick={() => setShowDeviceInfo(false)}
+                style={{
+                  padding: '4px',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Device ID:</span>
+                <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                  {deviceId ? `${deviceId.substring(0, 8)}...` : 'Not available'}
+                </span>
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Connection:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {spotifyReady ? (
+                    <CheckCircle size={14} style={{ color: '#10b981' }} />
+                  ) : (
+                    <Loader size={14} style={{ color: '#f59e0b' }} />
+                  )}
+                  <span style={{ fontSize: '14px' }}>
+                    {spotifyReady ? 'Connected' : 'Connecting'}
+                  </span>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#6b7280' }}>Active:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {spotifyActive ? (
+                    <CheckCircle size={14} style={{ color: '#10b981' }} />
+                  ) : (
+                    <AlertCircle size={14} style={{ color: '#f59e0b' }} />
+                  )}
+                  <span style={{ fontSize: '14px' }}>
+                    {spotifyActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+              </div>
+              
+              {spotifyError && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  marginTop: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <AlertCircle size={16} style={{ color: '#dc2626', flexShrink: 0, marginTop: '2px' }} />
+                    <div>
+                      <p style={{ fontSize: '14px', color: '#dc2626', margin: '0', fontWeight: '500' }}>
+                        Error
+                      </p>
+                      <p style={{ fontSize: '12px', color: '#7f1d1d', margin: '4px 0 0 0' }}>
+                        {spotifyError}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Player */}
       <div style={{
         position: 'fixed',
@@ -360,10 +539,6 @@ export default function MusicPlayer({
                   }}
                 />
               </div>
-            </div>
-            {/* Debug info */}
-            <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '4px' }}>
-              {progressPercent.toFixed(1)}% | {position}ms / {duration}ms
             </div>
           </div>
 
@@ -615,36 +790,160 @@ export default function MusicPlayer({
                 </div>
               </div>
             </div>
+
+            {/* Device Status Button */}
+            <button
+              onClick={() => setShowDeviceInfo(true)}
+              style={{
+                padding: '6px',
+                borderRadius: '4px',
+                border: '1px solid #e5e7eb',
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '24px'
+              }}
+              title="Device status"
+            >
+              <div 
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: 
+                    connectionStatus.color === 'green' ? '#10b981' :
+                    connectionStatus.color === 'blue' ? '#3b82f6' :
+                    connectionStatus.color === 'yellow' ? '#f59e0b' :
+                    connectionStatus.color === 'red' ? '#dc2626' : '#6b7280'
+                }}
+              />
+            </button>
           </div>
 
-          {/* Connection Status */}
-          {!spotifyReady && (
-            <div className="px-4 pb-2">
-              <div className="text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded">
-                Connecting to Spotify...
+          {/* Enhanced Connection Status */}
+          <div style={{ paddingLeft: '16px', paddingRight: '16px', paddingBottom: '12px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              backgroundColor: 
+                connectionStatus.color === 'green' ? '#f0fdf4' :
+                connectionStatus.color === 'blue' ? '#eff6ff' :
+                connectionStatus.color === 'yellow' ? '#fffbeb' :
+                connectionStatus.color === 'red' ? '#fef2f2' : '#f9fafb',
+              border: `1px solid ${
+                connectionStatus.color === 'green' ? '#bbf7d0' :
+                connectionStatus.color === 'blue' ? '#dbeafe' :
+                connectionStatus.color === 'yellow' ? '#fed7aa' :
+                connectionStatus.color === 'red' ? '#fecaca' : '#e5e7eb'
+              }`
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {connectionStatus.type === 'connecting' && (
+                  <Loader size={14} style={{ color: '#f59e0b' }} />
+                )}
+                {connectionStatus.type === 'active' && (
+                  <CheckCircle size={14} style={{ color: '#10b981' }} />
+                )}
+                {(connectionStatus.type === 'device_error' || connectionStatus.type === 'error') && (
+                  <AlertCircle size={14} style={{ color: '#dc2626' }} />
+                )}
+                {connectionStatus.type === 'inactive' && (
+                  <AlertCircle size={14} style={{ color: '#3b82f6' }} />
+                )}
+                {connectionStatus.type === 'rate_limited' && (
+                  <RefreshCw size={14} style={{ color: '#f59e0b' }} />
+                )}
+                
+                <span style={{ 
+                  color: 
+                    connectionStatus.color === 'green' ? '#166534' :
+                    connectionStatus.color === 'blue' ? '#1d4ed8' :
+                    connectionStatus.color === 'yellow' ? '#92400e' :
+                    connectionStatus.color === 'red' ? '#991b1b' : '#374151'
+                }}>
+                  {connectionStatus.message}
+                </span>
               </div>
+              
+              {connectionStatus.action && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {connectionStatus.action === 'activate' && (
+                    <button
+                      onClick={handleTransferPlayback}
+                      disabled={isTransferring}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '11px',
+                        fontWeight: '500',
+                        border: 'none',
+                        borderRadius: '4px',
+                        backgroundColor: '#2563eb',
+                        color: 'white',
+                        cursor: isTransferring ? 'not-allowed' : 'pointer',
+                        opacity: isTransferring ? '0.7' : '1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      {isTransferring && <Loader size={12} />}
+                      {isTransferring ? 'Activating...' : 'Activate'}
+                    </button>
+                  )}
+                  
+                  {connectionStatus.action === 'retry' && onRetryConnection && (
+                    <button
+                      onClick={onRetryConnection}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '11px',
+                        fontWeight: '500',
+                        border: 'none',
+                        borderRadius: '4px',
+                        backgroundColor: '#dc2626',
+                        color: 'white',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <RefreshCw size={12} />
+                      Retry
+                    </button>
+                  )}
+                  
+                  {connectionStatus.action === 'refresh' && (
+                    <button
+                      onClick={() => window.location.reload()}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '11px',
+                        fontWeight: '500',
+                        border: 'none',
+                        borderRadius: '4px',
+                        backgroundColor: '#dc2626',
+                        color: 'white',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <RefreshCw size={12} />
+                      Refresh Page
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-          {spotifyReady && !spotifyActive && (
-            <div className="px-4 pb-2">
-              <div className="flex items-center justify-between text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                <span>Click "Activate" to play on this device</span>
-                <button
-                  onClick={transferPlayback}
-                  className="text-blue-700 hover:text-blue-800 font-medium"
-                >
-                  Activate
-                </button>
-              </div>
-            </div>
-          )}
-          {spotifyError && (
-            <div className="px-4 pb-2">
-              <div className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
-                {spotifyError}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </>
