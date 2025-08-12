@@ -825,15 +825,92 @@ body::before { z-index: -20; } /* your AnimatedBackground uses -z-10 */
 .glass-card--snappy:hover { transform: translateY(-2px) scale(1.005); }
 .glass-card--snappy::before { transition: left 280ms linear; }
 
-/* --- Background: use the React component only --- */
-html, body, #root { height: 100%; }
-body {
-  /* kill the old global gradient so it can't go white on us */
-  background: transparent !important;
-  background-color: transparent !important;
-  animation: none !important;
+/* --- Background: ensure proper layering --- */
+html, body, #root { 
+  height: 100%; 
+  margin: 0;
+  padding: 0;
 }
-body::before { display: none !important; }
+
+body {
+  /* Fallback gradient in case React component fails to load */
+  background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #4facfe);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+  min-height: 100vh;
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Remove the old body::before since we're using React component */
+body::before { 
+  display: none !important; 
+}
+
+/* Ensure the React AnimatedBackground can overlay properly */
+#root {
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Fix for input fields - they were inheriting transparent background */
+.input-modern {
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(15px);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  padding: 16px 20px;
+  font-size: 16px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  width: 100%;
+  position: relative;
+  color: #333 !important;
+}
+
+.input-modern:focus {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(102, 126, 234, 0.5);
+  box-shadow: 
+    0 0 0 4px rgba(102, 126, 234, 0.1),
+    0 8px 25px rgba(102, 126, 234, 0.2);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+/* Fix glass cards opacity for better visibility */
+.glass-card {
+  background: rgba(255, 255, 255, 0.25) !important;
+  backdrop-filter: blur(25px) saturate(200%);
+  -webkit-backdrop-filter: blur(25px) saturate(200%);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 20px 50px rgba(31, 38, 135, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 30px rgba(102, 126, 234, 0.1);
+  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.320, 1);
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .input-modern { 
+    background: rgba(31, 41, 55, 0.9) !important;
+    color: #f1f5f9 !important; 
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  
+  .input-modern:focus {
+    background: rgba(31, 41, 55, 0.95) !important;
+  }
+  
+  .glass-card {
+    background: rgba(0, 0, 0, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+}
 
 /* Utilities that AnimatedBackground expects */
 .bg-gradient-animated {
@@ -859,13 +936,6 @@ body::before { display: none !important; }
 }
 .animate-particle-float { animation: particleFloat 20s linear infinite; }
 
-/* Slightly darker glass so cards look “glass” even on light scenes */
-:root {
-  --glass-strong: rgba(255,255,255,0.35);
-  --glass-medium: rgba(255,255,255,0.18);
-  --glass-light:  rgba(255,255,255,0.10);
-  --glass-border: rgba(255,255,255,0.22);
-}
 @media (prefers-color-scheme: dark) {
   :root {
     --glass-strong: rgba(0,0,0,0.80);

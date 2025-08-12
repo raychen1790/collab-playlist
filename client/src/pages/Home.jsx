@@ -40,7 +40,9 @@ function LoginScreen() {
             UPMIX
           </h1>
           <p className="text-white/90 text-xl leading-relaxed font-medium">
-            Create shared playlists where everyone can vote on their favorite tracks
+            Build a live, crowd-powered playlist </p>
+            <p className="text-white/90 text-xl leading-relaxed font-medium">
+            then play songs by votes, tempo, energy, or danceability
           </p>
         </div>
 
