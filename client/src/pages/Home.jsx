@@ -15,7 +15,7 @@ function LoadingScreen() {
         <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-white/20 to-white/10 backdrop-blur-lg rounded-3xl mb-8 shadow-2xl border border-white/20">
           <Loader2 size={40} className="text-white animate-spin" />
         </div>
-        <h2 className="text-2xl font-fun font-bold text-white mb-4">
+        <h2 className="text-2xl font-title font-bold text-white mb-4">
           Setting up your session...
         </h2>
         <p className="text-white/80 font-medium">
@@ -36,8 +36,8 @@ function LoginScreen() {
           <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-white/20 to-white/10 backdrop-blur-lg rounded-3xl mb-8 shadow-2xl border border-white/20">
             <Music size={48} className="text-white" />
           </div>
-          <h1 className="text-5xl font-fun font-bold text-white mb-6 drop-shadow-lg">
-            Collaborative Playlist
+          <h1 className="text-5xl font-title font-bold text-white mb-6 drop-shadow-lg">
+            UPMIX
           </h1>
           <p className="text-white/90 text-xl leading-relaxed font-medium">
             Create shared playlists where everyone can vote on their favorite tracks
@@ -45,14 +45,14 @@ function LoginScreen() {
         </div>
 
         {/* Features - Horizontal layout */}
-        <div className="glass-card p-8 mb-8">
+        <div className="glass-card glass-card--snappy p-8 mb-8">
           <div className="space-y-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
                 <Music size={24} className="text-white" />
               </div>
               <div className="flex-1">
-                <p className="font-fun font-bold text-gray-900 text-lg">Real-time voting</p>
+                <p className="font-title font-bold text-gray-900 text-lg">Real-time voting</p>
                 <p className="text-gray-600 font-medium">Vote up or down on any track instantly</p>
               </div>
             </div>
@@ -62,7 +62,7 @@ function LoginScreen() {
                 <Sparkles size={24} className="text-white" />
               </div>
               <div className="flex-1">
-                <p className="font-fun font-bold text-gray-900 text-lg">Live playback</p>
+                <p className="font-title font-bold text-gray-900 text-lg">Live playback</p>
                 <p className="text-gray-600 font-medium">Stream directly from Spotify with friends</p>
               </div>
             </div>
@@ -72,7 +72,7 @@ function LoginScreen() {
                 <Plus size={24} className="text-white" />
               </div>
               <div className="flex-1">
-                <p className="font-fun font-bold text-gray-900 text-lg">Easy sharing</p>
+                <p className="font-title font-bold text-gray-900 text-lg">Easy sharing</p>
                 <p className="text-gray-600 font-medium">Share room links with friends effortlessly</p>
               </div>
             </div>
@@ -174,7 +174,7 @@ function AuthedHome() {
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-white/20 to-white/10 backdrop-blur-lg rounded-3xl mb-8 shadow-2xl border border-white/20">
             <Music size={40} className="text-white" />
           </div>
-          <h1 className="text-4xl font-fun font-bold text-white mb-4 drop-shadow-lg">
+          <h1 className="text-4xl font-title font-bold text-white mb-4 drop-shadow-lg">
             Welcome back!
           </h1>
           <p className="text-white/90 text-lg font-medium">
@@ -194,11 +194,11 @@ function AuthedHome() {
               <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
                 <Plus size={20} className="text-white" />
               </div>
-              <h2 className="text-xl font-fun font-bold text-gray-900">Create a Room</h2>
+              <h2 className="text-xl font-title font-bold text-gray-900">Create a Room</h2>
             </div>
             
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3 font-fun">
+              <label className="block text-sm font-bold text-gray-700 mb-3 font-title">
                 Room Name
               </label>
               <input 
@@ -211,7 +211,7 @@ function AuthedHome() {
             </div>
             
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3 font-fun">
+              <label className="block text-sm font-bold text-gray-700 mb-3 font-title">
                 Spotify Playlist
               </label>
               <input 
@@ -252,7 +252,7 @@ function AuthedHome() {
             <div className="w-full border-t-2 border-white/20"></div>
           </div>
           <div className="relative flex justify-center text-lg">
-            <span className="px-4 bg-transparent text-white/80 font-fun font-bold">or</span>
+            <span className="px-4 bg-transparent text-white/80 font-title font-bold">or</span>
           </div>
         </div>
 
@@ -263,11 +263,11 @@ function AuthedHome() {
               <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                 <ArrowRight size={20} className="text-white" />
               </div>
-              <h2 className="text-xl font-fun font-bold text-gray-900">Join a Room</h2>
+              <h2 className="text-xl font-title font-bold text-gray-900">Join a Room</h2>
             </div>
             
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-3 font-fun">
+              <label className="block text-sm font-bold text-gray-700 mb-3 font-title">
                 Room ID
               </label>
               <input 

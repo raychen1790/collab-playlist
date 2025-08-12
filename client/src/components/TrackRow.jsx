@@ -1,9 +1,9 @@
-// client/src/components/TrackRow.jsx - Enhanced with better styling and compact design
+// client/src/components/TrackRow.jsx - Enhanced with advanced visual effects
 import VoteButtons from './VoteButtons.jsx';
-import { Play, Pause, Music } from 'lucide-react';
+import { Play, Pause, Music, Zap, Activity } from 'lucide-react';
 
 /**
- * Enhanced, compact TrackRow with fun styling and animations
+ * Ultra-enhanced TrackRow with liquid animations and 3D effects
  */
 export default function TrackRow({
   roomId,
@@ -56,42 +56,51 @@ export default function TrackRow({
     return 'Play track';
   };
 
+  // Get position indicator styling
+  const getPositionStyle = () => {
+    if (position <= 3) return 'bg-gradient-to-r from-yellow-400 to-orange-500 text-white';
+    if (position <= 10) return 'bg-gradient-to-r from-blue-400 to-purple-500 text-white';
+    return 'bg-white/20 text-white/80';
+  };
+
   return (
     <div 
-      className={`track-row-compact group relative flex items-center gap-3 py-3 px-4 border-b border-white/10 last:border-b-0 transition-all duration-300 ${
+      className={`track-row-compact group relative flex items-center gap-4 py-4 px-5 border-b border-white/10 last:border-b-0 transition-all duration-500 ease-out ${
         isCurrentTrack 
-          ? 'bg-gradient-to-r from-blue-400/20 to-purple-400/20 border-blue-300/30' 
+          ? 'bg-gradient-to-r from-blue-400/20 via-purple-400/20 to-pink-400/20 border-blue-300/30 shadow-lg' 
           : 'hover:bg-white/10'
       }`}
       style={{
-        animationDelay: `${position * 30}ms`
+        animationDelay: `${position * 50}ms`
       }}
     >
-      {/* Subtle glow for current track */}
+      {/* Holographic glow for current track */}
       {isCurrentTrack && (
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 to-purple-400/10 rounded-lg"></div>
+        <>
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 via-purple-400/10 to-pink-400/10 rounded-lg animate-pulse"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-holographic-shine"></div>
+        </>
       )}
 
-      {/* Position indicator - more compact */}
-      <div className="w-8 text-center">
-        <span className={`text-sm font-fun font-bold ${
-          isCurrentTrack ? 'text-blue-300' : 'text-gray-400'
-        }`}>
+      {/* Enhanced position indicator with rank styling */}
+      <div className="relative">
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-fun font-bold shadow-lg transition-all duration-300 ${getPositionStyle()}`}>
           {position}
-        </span>
+        </div>
+        
+        {/* Rank indicators for top positions */}
+        {position <= 3 && (
+          <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-yellow-300 to-yellow-500 rounded-full border border-white/50 animate-pulse"></div>
+        )}
       </div>
 
-      {/* Play/pause button - enhanced styling */}
+      {/* Enhanced play/pause button with liquid effect */}
       <button
         onClick={handlePlayPauseClick}
         disabled={!canPlay}
-        className={`play-btn relative p-2 transition-all duration-300 ${
+        className={`play-btn btn-liquid relative ${
           canPlay 
-            ? `${
-                isCurrentTrack && isPlaying 
-                  ? 'playing' 
-                  : ''
-              }` 
+            ? `${isCurrentTrack && isPlaying ? 'playing' : ''}` 
             : 'opacity-30 cursor-not-allowed'
         }`}
         title={getPlayButtonTitle()}
@@ -100,81 +109,112 @@ export default function TrackRow({
         
         {/* Pulsing indicator for currently playing */}
         {isCurrentTrack && isPlaying && (
-          <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-400 to-purple-400 animate-pulse opacity-20"></div>
+          <>
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-400 to-purple-400 animate-pulse opacity-20"></div>
+            <div className="absolute -inset-1 rounded-xl bg-gradient-to-r from-blue-400/50 to-purple-400/50 animate-ping opacity-20"></div>
+          </>
         )}
       </button>
 
-      {/* Album cover - smaller and more refined */}
-      <div className="relative group">
-        {albumArt ? (
-          <img
-            src={albumArt}
-            alt=""
-            className="w-12 h-12 rounded-xl object-cover shadow-md transition-all duration-300 group-hover:shadow-lg group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center shadow-md">
-            <Music size={14} className="text-gray-400" />
-          </div>
-        )}
+      {/* 3D Album cover with enhanced hover effects */}
+      <div className="relative group/album">
+        <div className="card-3d">
+          {albumArt ? (
+            <img
+              src={albumArt}
+              alt=""
+              className="w-14 h-14 rounded-xl object-cover shadow-lg transition-all duration-500 group-hover/album:shadow-2xl"
+              style={{
+                filter: isCurrentTrack ? 'brightness(1.1) saturate(1.2)' : 'none'
+              }}
+            />
+          ) : (
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-gray-100 to-gray-300 flex items-center justify-center shadow-lg">
+              <Music size={16} className="text-gray-500" />
+            </div>
+          )}
+          
+          {/* Holographic overlay on hover */}
+          <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-400/0 via-purple-400/20 to-pink-400/0 opacity-0 group-hover/album:opacity-100 transition-opacity duration-500"></div>
+        </div>
         
-        {/* Play overlay on hover */}
+        {/* Play overlay with liquid effect */}
         {canPlay && !isCurrentTrack && (
-          <div className="absolute inset-0 bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
-            <Play size={14} className="text-white" />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-xl opacity-0 group-hover/album:opacity-100 transition-all duration-300 flex items-center justify-center">
+            <Play size={16} className="text-white drop-shadow-lg" />
           </div>
         )}
       </div>
 
-      {/* Title + artist - more compact spacing */}
+      {/* Enhanced title + artist section */}
       <div className="flex-1 min-w-0">
-        <p className={`font-fun font-bold track-title truncate leading-tight ${
-          isCurrentTrack ? 'text-blue-200' : 'text-gray-800'
-        } transition-colors duration-200`}>
+        <p className={`font-fun font-bold track-title truncate leading-tight text-lg transition-colors duration-300 ${
+          isCurrentTrack ? 'text-gradient-animated' : 'text-white/90'
+        }`}>
           {title}
         </p>
-        <p className="track-artist text-gray-600 truncate leading-tight mt-0.5 font-main font-medium">
+        <p className="track-artist text-white/70 truncate leading-tight mt-1 font-main font-medium">
           {artist}
         </p>
         
-        {/* Compact status indicators */}
+        {/* Enhanced status indicators */}
         {isCurrentTrack && isPlaying && (
-          <div className="flex items-center gap-1 mt-1">
-            <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div>
-            <span className="text-xs text-blue-400 font-fun font-bold">Playing</span>
+          <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-1">
+              <div className="w-1 h-3 bg-blue-400 rounded-full animate-pulse"></div>
+              <div className="w-1 h-4 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+              <div className="w-1 h-2 bg-pink-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+            </div>
+            <span className="text-xs text-blue-300 font-fun font-bold">Now Playing</span>
           </div>
         )}
         {!isPlayable && (
-          <span className="text-xs text-gray-400 font-main">No Spotify ID</span>
+          <div className="flex items-center gap-1 mt-1">
+            <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+            <span className="text-xs text-yellow-300 font-main">No Spotify ID</span>
+          </div>
         )}
       </div>
 
-      {/* Metric display - redesigned */}
-      <div className="text-right min-w-[60px]">
+      {/* Enhanced metric display with visual indicators */}
+      <div className="text-right min-w-[80px]">
         {sortMode === 'votes' ? (
           <div className="flex flex-col items-end">
-            <span className={`text-lg font-fun font-bold ${
-              score > 0 ? 'text-green-400' : score < 0 ? 'text-red-400' : 'text-gray-500'
+            <div className={`inline-flex items-center gap-1 px-3 py-1 rounded-xl backdrop-blur-lg transition-all duration-300 ${
+              score > 0 
+                ? 'bg-green-400/20 border border-green-400/40' 
+                : score < 0 
+                ? 'bg-red-400/20 border border-red-400/40' 
+                : 'bg-gray-400/20 border border-gray-400/40'
             }`}>
-              {score > 0 ? '+' : ''}{score}
-            </span>
-            <span className="text-xs text-gray-400 font-main">votes</span>
+              <span className={`text-lg font-fun font-bold ${
+                score > 0 ? 'text-green-300' : score < 0 ? 'text-red-300' : 'text-gray-300'
+              }`}>
+                {score > 0 ? '+' : ''}{score}
+              </span>
+            </div>
+            <span className="text-xs text-white/60 font-main mt-1">votes</span>
           </div>
         ) : (
           <div className="flex flex-col items-end">
-            <span className="text-lg font-fun font-bold text-gray-700">
-              {extraMetric?.split(' ')[0] || 'N/A'}
-            </span>
-            <span className="text-xs text-gray-400 font-main">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-white/10 backdrop-blur-lg border border-white/20">
+              {sortMode === 'tempo' && <Activity size={14} className="text-blue-400" />}
+              {sortMode === 'energy' && <Zap size={14} className="text-yellow-400" />}
+              {sortMode === 'dance' && <Music size={14} className="text-purple-400" />}
+              <span className="text-lg font-fun font-bold text-white">
+                {extraMetric?.split(' ')[0] || 'N/A'}
+              </span>
+            </div>
+            <span className="text-xs text-white/60 font-main mt-1">
               {extraMetric?.split(' ')[1] || ''}
             </span>
           </div>
         )}
       </div>
 
-      {/* Vote buttons */}
+      {/* Enhanced vote buttons with better mobile visibility */}
       {isAuthed && (
-        <div className="opacity-100 md:opacity-80 md:group-hover:opacity-100 transition-opacity duration-200">
+        <div className="opacity-100 transition-opacity duration-300">
           <VoteButtons
             roomId={roomId}
             trackId={trackId}
@@ -184,10 +224,13 @@ export default function TrackRow({
         </div>
       )}
 
-      {/* Subtle border highlight for current track */}
+      {/* Liquid border highlight for current track */}
       {isCurrentTrack && (
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 to-purple-400 rounded-r"></div>
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 via-purple-400 to-pink-400 rounded-r animate-gradient-shift"></div>
       )}
+
+      {/* Ambient glow effect on hover */}
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-400/0 via-purple-400/5 to-pink-400/0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
     </div>
   );
 }
