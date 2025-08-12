@@ -336,13 +336,6 @@ export default function RoomPage() {
                   >
                     Activate
                   </button>
-                  {/* NEW: user-gesture to satisfy Safari/iOS audio policy */}
-                  <button
-                    onClick={async () => { try { await activateAudio(); } catch {} }}
-                    className="btn-secondary"
-                  >
-                    Enable Audio
-                  </button>
                 </div>
               </div>
             </div>

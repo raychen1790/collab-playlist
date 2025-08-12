@@ -560,19 +560,38 @@ body::before {
   }
 }
 
-/* Enhanced Typography */
 .playlist-title {
   font-family: 'Fredoka', sans-serif;
   font-size: clamp(2rem, 5vw, 3.5rem);
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: .02em;
   background: var(--primary-gradient);
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  text-shadow:
+    0 1px 0 rgba(255,255,255,.55),
+    0 6px 24px rgba(99,102,241,.45),
+    0 0 42px rgba(240,147,251,.35);
+
   text-align: center;
   margin-bottom: 1rem;
   position: relative;
   animation: titleGlow 3s ease-in-out infinite;
+}
+
+.playlist-title::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+  z-index: -1;
+  background:
+    radial-gradient(100% 60% at 50% 40%, rgba(255,255,255,.35), rgba(255,255,255,0) 60%),
+    conic-gradient(from 0deg, #60a5fa22, #a78bfa22, #f472b622, #60a5fa22);
+  filter: blur(26px);
+  opacity: .9;
+  pointer-events: none;
 }
 
 @keyframes titleGlow {

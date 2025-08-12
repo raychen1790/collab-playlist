@@ -370,19 +370,22 @@ export function useSpotifyWebPlayback() {
           if (fallbackId) {
             setDeviceId(fallbackId);
             setIsReady(true);
-            setError('Player ready (fallback detection)');
+            setError(null);
             setTimeout(() => checkActiveDevice(fallbackId), 3000);
             return;
           }
           const test = await spotifyPlayer.getCurrentState();
           if (test !== null) {
             setIsReady(true);
-            setError('Player connected (state detection)');
+            setError(null);
             return;
           }
-        } catch {}
-        setError('Player connection timeout. Please refresh and try again.');
-      }, 30000);
+        } catch (err) {
+    console.log('❌ Fallback detection failed:', err);
+  }
+        console.error('❌ Player connection timeout - all methods failed');
+  setError('Player connection timeout. Please refresh and try again.');
+}, 30000);
 
       console.log('🔗 Connecting to Spotify Web Playback SDK...');
       const success = await spotifyPlayer.connect();
