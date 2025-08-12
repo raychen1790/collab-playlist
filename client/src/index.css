@@ -38,6 +38,8 @@
 
 .font-title { font-family: var(--font-title); }
 
+html, body, #root { height: 100%; }
+
 body {
   margin: 0;
   min-width: 320px;
@@ -822,3 +824,53 @@ body::before { z-index: -20; } /* your AnimatedBackground uses -z-10 */
 }
 .glass-card--snappy:hover { transform: translateY(-2px) scale(1.005); }
 .glass-card--snappy::before { transition: left 280ms linear; }
+
+/* --- Background: use the React component only --- */
+html, body, #root { height: 100%; }
+body {
+  /* kill the old global gradient so it can't go white on us */
+  background: transparent !important;
+  background-color: transparent !important;
+  animation: none !important;
+}
+body::before { display: none !important; }
+
+/* Utilities that AnimatedBackground expects */
+.bg-gradient-animated {
+  background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #4facfe);
+  background-size: 400% 400%;
+}
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-gradient-shift { animation: gradientShift 15s ease infinite; }
+
+@keyframes floatPulse {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50% { transform: translateY(-5px) scale(1.05); }
+}
+.animate-float-pulse { animation: floatPulse 3s ease-in-out infinite; }
+
+@keyframes particleFloat {
+  0% { transform: translateY(0px) rotate(0deg); }
+  100% { transform: translateY(-20px) rotate(360deg); }
+}
+.animate-particle-float { animation: particleFloat 20s linear infinite; }
+
+/* Slightly darker glass so cards look “glass” even on light scenes */
+:root {
+  --glass-strong: rgba(255,255,255,0.35);
+  --glass-medium: rgba(255,255,255,0.18);
+  --glass-light:  rgba(255,255,255,0.10);
+  --glass-border: rgba(255,255,255,0.22);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass-strong: rgba(0,0,0,0.80);
+    --glass-medium: rgba(0,0,0,0.60);
+    --glass-light:  rgba(0,0,0,0.40);
+    --glass-border: rgba(255,255,255,0.12);
+  }
+}

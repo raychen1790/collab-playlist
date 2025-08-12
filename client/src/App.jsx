@@ -9,23 +9,26 @@ import { Music, Sparkles } from 'lucide-react';
 // Background component for animated particles
 function AnimatedBackground() {
   return (
-    <>
-      {/* Primary animated gradient background */}
-      <div className="fixed inset-0 bg-gradient-animated bg-[length:400%_400%] animate-gradient-shift -z-10"></div>
-      
-      {/* Floating particles overlay */}
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 opacity-30">
-          {/* Large floating orbs */}
-          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-gradient-to-r from-blue-400/20 to-purple-400/20 rounded-full blur-3xl animate-float-pulse"></div>
-          <div className="absolute top-3/4 right-1/4 w-48 h-48 bg-gradient-to-r from-pink-400/20 to-orange-400/20 rounded-full blur-3xl animate-float-pulse" style={{animationDelay: '2s'}}></div>
-          <div className="absolute top-1/2 left-1/2 w-32 h-32 bg-gradient-to-r from-green-400/20 to-blue-400/20 rounded-full blur-2xl animate-float-pulse" style={{animationDelay: '4s'}}></div>
-        </div>
-        
-        {/* Micro particles */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_75%,rgba(255,255,255,0.1)_1px,transparent_1px),radial-gradient(circle_at_75%_25%,rgba(255,255,255,0.08)_2px,transparent_2px),radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:100px_100px,150px_150px,200px_200px] animate-particle-float"></div>
+    <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
+      {/* Base animated gradient */}
+      <div className="absolute inset-0 bg-gradient-animated bg-[length:400%_400%] animate-gradient-shift" />
+
+      {/* Floating orbs */}
+      <div className="absolute inset-0 opacity-30">
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-gradient-to-r from-blue-400/20 to-purple-400/20 rounded-full blur-3xl animate-float-pulse" />
+        <div
+          className="absolute top-3/4 right-1/4 w-48 h-48 bg-gradient-to-r from-pink-400/20 to-orange-400/20 rounded-full blur-3xl animate-float-pulse"
+          style={{ animationDelay: '2s' }}
+        />
+        <div
+          className="absolute top-1/2 left-1/2 w-32 h-32 bg-gradient-to-r from-green-400/20 to-blue-400/20 rounded-full blur-2xl animate-float-pulse"
+          style={{ animationDelay: '4s' }}
+        />
       </div>
-    </>
+
+      {/* Micro particles */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_75%,rgba(255,255,255,0.1)_1px,transparent_1px),radial-gradient(circle_at_75%_25%,rgba(255,255,255,0.08)_2px,transparent_2px),radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:100px_100px,150px_150px,200px_200px] animate-particle-float" />
+    </div>
   );
 }
 
@@ -77,7 +80,7 @@ function Navigation() {
               <Music size={20} className="text-white" />
             </div>
             <span className="font-fun font-bold text-xl text-gradient hidden sm:block">
-              Collaborative Playlist
+              UPMIX
             </span>
           </div>
           
