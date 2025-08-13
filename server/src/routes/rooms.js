@@ -215,11 +215,13 @@ router.get('/:roomId', async (req, res) => {
   });
 });
 
-// Vote on a track
+// Vote on a track - FIXED VERSION
 router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
   const { roomId, trackId } = req.params;
   const { vote } = req.body;
   const user = req.user;
+
+  console.log('🗳️ Processing vote:', { roomId, trackId, vote, userId: user?.id });
 
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
   if (![1, 0, -1].includes(vote)) {
@@ -227,18 +229,29 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
   }
 
   try {
-    // Get user ID from your users table
+    // FIXED: Use UPSERT instead of SELECT to handle first-time users
+    console.log('🔍 Upserting user:', { spotify_id: user.id, display_name: user.display_name });
+    
     const { data: userRows, error: userErr } = await supabase
       .from('users')
-      .select('id')
-      .eq('spotify_id', user.id)
-      .single();
+      .upsert(
+        { spotify_id: user.id, display_name: user.display_name },
+        { onConflict: 'spotify_id', ignoreDuplicates: false, returning: 'representation' }
+      )
+      .select('id');
 
-    if (userErr || !userRows) {
-      return res.status(500).json({ error: 'User not found' });
+    if (userErr) {
+      console.error('❌ User upsert error:', userErr);
+      return res.status(500).json({ error: userErr.message });
     }
 
-    const userId = userRows.id;
+    if (!userRows || userRows.length === 0) {
+      console.error('❌ No user data returned from upsert');
+      return res.status(500).json({ error: 'Failed to get user data' });
+    }
+
+    const userId = userRows[0].id;
+    console.log('✅ User ID resolved:', userId);
 
     // Verify track exists in room
     const { data: track, error: trackError } = await supabase
@@ -249,25 +262,38 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
       .single();
 
     if (trackError || !track) {
+      console.error('❌ Track verification failed:', { trackId, roomId, error: trackError });
       return res.status(404).json({ error: 'Track not found' });
     }
 
+    console.log('🗳️ Processing vote:', { trackId, userId, vote });
+
     if (vote === 0) {
       // Remove existing vote
-      await supabase
+      const { error: deleteError } = await supabase
         .from('votes')
         .delete()
         .eq('track_id', trackId)
         .eq('user_id', userId);
+
+      if (deleteError) {
+        console.error('❌ Vote delete error:', deleteError);
+        return res.status(500).json({ error: 'Failed to remove vote' });
+      }
     } else {
       // Upsert vote
-      await supabase
+      const { error: voteError } = await supabase
         .from('votes')
         .upsert({
           track_id: trackId,
           user_id: userId,
           vote,
         });
+
+      if (voteError) {
+        console.error('❌ Vote upsert error:', voteError);
+        return res.status(500).json({ error: 'Failed to submit vote' });
+      }
     }
 
     // Get updated score
@@ -277,6 +303,8 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
       .eq('track_id', trackId);
 
     const newScore = votes?.reduce((sum, v) => sum + v.vote, 0) || 0;
+    
+    console.log('✅ Vote processed successfully:', { trackId, newScore });
 
     res.json({ 
       success: true, 
@@ -285,7 +313,7 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Failed to submit vote:', error);
+    console.error('❌ Failed to submit vote:', error);
     res.status(500).json({ error: 'Failed to submit vote' });
   }
 });

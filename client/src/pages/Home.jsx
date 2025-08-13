@@ -1,8 +1,8 @@
-// client/src/pages/Home.jsx - Updated to use enhanced API requests
+// client/src/pages/Home.jsx - Updated to use enhanced API requests with demo features
 import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
-import { Music, Plus, ArrowRight, Sparkles, Loader2 } from 'lucide-react';
+import { Music, Plus, ArrowRight, Sparkles, Loader2, User, PlayCircle } from 'lucide-react';
 
 // Get API URL from environment
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
@@ -43,6 +43,37 @@ function LoginScreen() {
             Build a live, crowd-powered playlist </p>
             <p className="text-white/90 text-xl leading-relaxed font-medium">
             then play songs by votes, tempo, energy, or danceability
+          </p>
+        </div>
+
+        {/* Demo Section */}
+        <div className="glass-card glass-card--snappy p-6 mb-6 border-2 border-yellow-400/30 bg-gradient-to-br from-yellow-50/10 to-amber-50/5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl flex items-center justify-center shadow-lg">
+              <User size={20} className="text-white" />
+            </div>
+            <div>
+              <h3 className="font-title font-bold text-white text-lg">Try the Demo</h3>
+              <p className="text-white/80 text-sm">Experience UPMIX without Spotify Premium</p>
+            </div>
+          </div>
+          
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 mb-4 border border-white/20">
+            <p className="text-white/90 text-sm font-medium mb-2">Demo Login Credentials:</p>
+            <div className="space-y-1 text-white/80 text-sm font-mono">
+              <div className="flex justify-between">
+                <span>Email:</span>
+                <span className="select-all">upmixdemo@gmail.com</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Password:</span>
+                <span className="select-all">upmix2025</span>
+              </div>
+            </div>
+          </div>
+          
+          <p className="text-white/70 text-xs">
+            Use these credentials to explore all features with sample playlists and rooms
           </p>
         </div>
 
@@ -110,6 +141,8 @@ function AuthedHome() {
   const [creating, setCreating] = useState(false);
   const [joinId, setJoinId] = useState('');
 
+  const demoRoomId = '139113a6-dc93-453f-9fd3-461e7f00df81';
+
   const getPlaylistId = (inp) => {
     try { return new URL(inp).pathname.split('/').pop(); }
     catch { return inp.trim(); }
@@ -165,6 +198,10 @@ function AuthedHome() {
     e.preventDefault();
     if (!joinId.trim()) return;
     nav(`/rooms/${joinId.trim()}`);
+  };
+
+  const handleJoinDemo = () => {
+    nav(`/rooms/${demoRoomId}`);
   };
 
   return (
@@ -266,6 +303,26 @@ function AuthedHome() {
                 <ArrowRight size={20} className="text-white" />
               </div>
               <h2 className="text-xl font-title font-bold text-gray-900">Join a Room</h2>
+            </div>
+
+            {/* Demo Room Section */}
+            <div className="bg-gradient-to-br from-yellow-50/20 to-amber-50/10 rounded-lg p-4 border border-yellow-400/30 mb-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-lg flex items-center justify-center">
+                  <PlayCircle size={16} className="text-white" />
+                </div>
+                <span className="font-title font-bold text-gray-900 text-sm">Try Demo Room</span>
+              </div>
+              <p className="text-gray-700 text-xs mb-3 font-medium">
+                Join our demo room with sample music to test all features
+              </p>
+              <button
+                type="button"
+                onClick={handleJoinDemo}
+                className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-white font-title font-bold text-sm py-2 px-4 rounded-lg hover:shadow-lg transition-all duration-200 hover:scale-[1.02]"
+              >
+                Join Demo Room
+              </button>
             </div>
             
             <div>
