@@ -1,4 +1,4 @@
-// client/src/components/MusicPlayer.jsx - ENHANCED VERSION
+// client/src/components/MusicPlayer.jsx - ENHANCED VERSION with Preview Mode Support
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Play, 
@@ -41,7 +41,9 @@ export default function MusicPlayer({
   currentTrackIndex = 0,
   onPlayTrackFromQueue,
   onRetryConnection, // New prop for retrying connection
-  deviceId // New prop to show device info
+  deviceId, // New prop to show device info
+  previewMode = false, // NEW: Preview mode flag
+  previewUrl = null // NEW: Current preview URL
 }) {
   const [showQueue, setShowQueue] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -142,8 +144,16 @@ export default function MusicPlayer({
   const progressPercent = duration ? (position / duration) * 100 : 0;
   const effectiveVolume = isMuted ? 0 : volume;
 
-  // Determine connection status for better UX
+  // Determine connection status for better UX - Updated for preview mode
   const getConnectionStatus = () => {
+    if (previewMode) {
+      return { 
+        type: 'preview_active', 
+        message: 'Preview mode - Playing 30-second samples', 
+        color: 'blue' 
+      };
+    }
+    
     if (!spotifyReady) {
       return { type: 'connecting', message: 'Connecting to Spotify...', color: 'yellow' };
     }
@@ -197,6 +207,8 @@ export default function MusicPlayer({
     progressPercent,
     isPlaying,
     currentTrack: currentTrack?.title || currentTrack?.name,
+    previewMode,
+    previewUrl,
     spotifyReady,
     spotifyActive,
     connectionStatus: connectionStatus.type
@@ -236,6 +248,18 @@ export default function MusicPlayer({
             }}>
               <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0' }}>
                 Queue ({playQueue.length} tracks)
+                {previewMode && (
+                  <span style={{ 
+                    fontSize: '12px', 
+                    color: '#3b82f6',
+                    marginLeft: '8px',
+                    backgroundColor: '#eff6ff',
+                    padding: '2px 6px',
+                    borderRadius: '4px'
+                  }}>
+                    Preview Mode
+                  </span>
+                )}
               </h3>
               <button
                 onClick={() => {
@@ -269,6 +293,8 @@ export default function MusicPlayer({
                 }
                 
                 const isCurrentInQueue = displayIndex === 0;
+                const hasPreview = !!track.previewUrl;
+                const hasSpotifyId = !!track.spotifyId;
                 
                 return (
                   <div
@@ -353,6 +379,30 @@ export default function MusicPlayer({
                         {track.artist}
                       </p>
                     </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {previewMode && hasPreview && (
+                        <div style={{
+                          fontSize: '10px',
+                          color: '#3b82f6',
+                          backgroundColor: '#eff6ff',
+                          padding: '2px 4px',
+                          borderRadius: '4px'
+                        }}>
+                          30s
+                        </div>
+                      )}
+                      {!previewMode && !hasSpotifyId && (
+                        <div style={{
+                          fontSize: '10px',
+                          color: '#f59e0b',
+                          backgroundColor: '#fffbeb',
+                          padding: '2px 4px',
+                          borderRadius: '4px'
+                        }}>
+                          No ID
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -361,7 +411,7 @@ export default function MusicPlayer({
         </div>
       )}
 
-      {/* Device Info Overlay */}
+      {/* Device Info Overlay - Updated for preview mode */}
       {showDeviceInfo && (
         <div 
           style={{
@@ -392,7 +442,7 @@ export default function MusicPlayer({
               marginBottom: '16px'
             }}>
               <h3 style={{ fontSize: '18px', fontWeight: '600', margin: '0' }}>
-                Device Status
+                {previewMode ? 'Preview Mode Status' : 'Device Status'}
               </h3>
               <button
                 onClick={() => setShowDeviceInfo(false)}
@@ -413,56 +463,92 @@ export default function MusicPlayer({
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Device ID:</span>
-                <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
-                  {deviceId ? `${deviceId.substring(0, 8)}...` : 'Not available'}
+                <span style={{ color: '#6b7280' }}>Mode:</span>
+                <span style={{ 
+                  fontSize: '14px',
+                  color: previewMode ? '#3b82f6' : '#10b981',
+                  fontWeight: '500'
+                }}>
+                  {previewMode ? 'Preview (30s samples)' : 'Full Spotify'}
                 </span>
               </div>
               
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Connection:</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {spotifyReady ? (
-                    <CheckCircle size={14} style={{ color: '#10b981' }} />
-                  ) : (
-                    <Loader size={14} style={{ color: '#f59e0b' }} />
+              {!previewMode && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Device ID:</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                      {deviceId ? `${deviceId.substring(0, 8)}...` : 'Not available'}
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Connection:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {spotifyReady ? (
+                        <CheckCircle size={14} style={{ color: '#10b981' }} />
+                      ) : (
+                        <Loader size={14} style={{ color: '#f59e0b' }} />
+                      )}
+                      <span style={{ fontSize: '14px' }}>
+                        {spotifyReady ? 'Connected' : 'Connecting'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#6b7280' }}>Active:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {spotifyActive ? (
+                        <CheckCircle size={14} style={{ color: '#10b981' }} />
+                      ) : (
+                        <AlertCircle size={14} style={{ color: '#f59e0b' }} />
+                      )}
+                      <span style={{ fontSize: '14px' }}>
+                        {spotifyActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {spotifyError && (
+                    <div style={{
+                      backgroundColor: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      marginTop: '8px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                        <AlertCircle size={16} style={{ color: '#dc2626', flexShrink: 0, marginTop: '2px' }} />
+                        <div>
+                          <p style={{ fontSize: '14px', color: '#dc2626', margin: '0', fontWeight: '500' }}>
+                            Error
+                          </p>
+                          <p style={{ fontSize: '12px', color: '#7f1d1d', margin: '4px 0 0 0' }}>
+                            {spotifyError}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )}
-                  <span style={{ fontSize: '14px' }}>
-                    {spotifyReady ? 'Connected' : 'Connecting'}
-                  </span>
-                </div>
-              </div>
+                </>
+              )}
               
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#6b7280' }}>Active:</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {spotifyActive ? (
-                    <CheckCircle size={14} style={{ color: '#10b981' }} />
-                  ) : (
-                    <AlertCircle size={14} style={{ color: '#f59e0b' }} />
-                  )}
-                  <span style={{ fontSize: '14px' }}>
-                    {spotifyActive ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-              </div>
-              
-              {spotifyError && (
+              {previewMode && (
                 <div style={{
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
+                  backgroundColor: '#eff6ff',
+                  border: '1px solid #dbeafe',
                   borderRadius: '8px',
-                  padding: '12px',
-                  marginTop: '8px'
+                  padding: '12px'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                    <AlertCircle size={16} style={{ color: '#dc2626', flexShrink: 0, marginTop: '2px' }} />
+                    <CheckCircle size={16} style={{ color: '#3b82f6', flexShrink: 0, marginTop: '2px' }} />
                     <div>
-                      <p style={{ fontSize: '14px', color: '#dc2626', margin: '0', fontWeight: '500' }}>
-                        Error
+                      <p style={{ fontSize: '14px', color: '#1d4ed8', margin: '0', fontWeight: '500' }}>
+                        Preview Mode Active
                       </p>
-                      <p style={{ fontSize: '12px', color: '#7f1d1d', margin: '4px 0 0 0' }}>
-                        {spotifyError}
+                      <p style={{ fontSize: '12px', color: '#1e40af', margin: '4px 0 0 0' }}>
+                        Playing 30-second samples • No Spotify Premium required
                       </p>
                     </div>
                   </div>
@@ -499,6 +585,17 @@ export default function MusicPlayer({
               <span>{formatTime(position)}</span>
               <div style={{ flex: 1 }}></div>
               <span>{formatTime(duration)}</span>
+              {previewMode && (
+                <span style={{ 
+                  color: '#3b82f6',
+                  fontSize: '10px',
+                  backgroundColor: '#eff6ff',
+                  padding: '2px 4px',
+                  borderRadius: '4px'
+                }}>
+                  Preview
+                </span>
+              )}
             </div>
             <div
               ref={progressRef}
@@ -517,7 +614,7 @@ export default function MusicPlayer({
               <div
                 style={{
                   height: '100%',
-                  backgroundColor: '#2563eb',
+                  backgroundColor: previewMode ? '#3b82f6' : '#2563eb',
                   borderRadius: '2px',
                   width: `${Math.max(0, Math.min(100, progressPercent))}%`,
                   position: 'relative',
@@ -532,7 +629,7 @@ export default function MusicPlayer({
                     transform: 'translateY(-50%)',
                     width: '12px',
                     height: '12px',
-                    backgroundColor: '#2563eb',
+                    backgroundColor: previewMode ? '#3b82f6' : '#2563eb',
                     borderRadius: '50%',
                     opacity: progressPercent > 0 ? '1' : '0',
                     transition: 'opacity 0.2s ease'
@@ -615,15 +712,15 @@ export default function MusicPlayer({
                   console.log('Shuffle clicked, current mode:', shuffleMode);
                   onShuffle?.();
                 }}
-                disabled={!spotifyReady}
+                disabled={previewMode ? false : !spotifyReady}
                 style={{
                   padding: '8px',
                   borderRadius: '50%',
                   border: 'none',
                   backgroundColor: shuffleMode ? '#dbeafe' : 'transparent',
                   color: shuffleMode ? '#2563eb' : '#6b7280',
-                  cursor: spotifyReady ? 'pointer' : 'not-allowed',
-                  opacity: spotifyReady ? '1' : '0.5',
+                  cursor: (previewMode || spotifyReady) ? 'pointer' : 'not-allowed',
+                  opacity: (previewMode || spotifyReady) ? '1' : '0.5',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
@@ -639,15 +736,15 @@ export default function MusicPlayer({
                   console.log('Previous clicked');
                   onPrevious?.();
                 }}
-                disabled={!spotifyReady || !spotifyActive}
+                disabled={previewMode ? false : (!spotifyReady || !spotifyActive)}
                 style={{
                   padding: '8px',
                   borderRadius: '50%',
                   border: 'none',
                   backgroundColor: 'transparent',
                   color: '#6b7280',
-                  cursor: (spotifyReady && spotifyActive) ? 'pointer' : 'not-allowed',
-                  opacity: (spotifyReady && spotifyActive) ? '1' : '0.5',
+                  cursor: (previewMode || (spotifyReady && spotifyActive)) ? 'pointer' : 'not-allowed',
+                  opacity: (previewMode || (spotifyReady && spotifyActive)) ? '1' : '0.5',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
@@ -667,15 +764,15 @@ export default function MusicPlayer({
                     onPlay?.();
                   }
                 }}
-                disabled={!spotifyReady || !spotifyActive}
+                disabled={previewMode ? false : (!spotifyReady || !spotifyActive)}
                 style={{
                   padding: '12px',
                   borderRadius: '50%',
                   border: 'none',
-                  backgroundColor: '#2563eb',
+                  backgroundColor: previewMode ? '#3b82f6' : '#2563eb',
                   color: 'white',
-                  cursor: (spotifyReady && spotifyActive) ? 'pointer' : 'not-allowed',
-                  opacity: (spotifyReady && spotifyActive) ? '1' : '0.5',
+                  cursor: (previewMode || (spotifyReady && spotifyActive)) ? 'pointer' : 'not-allowed',
+                  opacity: (previewMode || (spotifyReady && spotifyActive)) ? '1' : '0.5',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
@@ -691,15 +788,15 @@ export default function MusicPlayer({
                   console.log('Next clicked');
                   onNext?.();
                 }}
-                disabled={!spotifyReady || !spotifyActive}
+                disabled={previewMode ? false : (!spotifyReady || !spotifyActive)}
                 style={{
                   padding: '8px',
                   borderRadius: '50%',
                   border: 'none',
                   backgroundColor: 'transparent',
                   color: '#6b7280',
-                  cursor: (spotifyReady && spotifyActive) ? 'pointer' : 'not-allowed',
-                  opacity: (spotifyReady && spotifyActive) ? '1' : '0.5',
+                  cursor: (previewMode || (spotifyReady && spotifyActive)) ? 'pointer' : 'not-allowed',
+                  opacity: (previewMode || (spotifyReady && spotifyActive)) ? '1' : '0.5',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
@@ -805,7 +902,7 @@ export default function MusicPlayer({
                 justifyContent: 'center',
                 minWidth: '24px'
               }}
-              title="Device status"
+              title={previewMode ? 'Preview mode status' : 'Device status'}
             >
               <div 
                 style={{
@@ -822,7 +919,7 @@ export default function MusicPlayer({
             </button>
           </div>
 
-          {/* Enhanced Connection Status */}
+          {/* Enhanced Connection Status - Updated for preview mode */}
           <div style={{ paddingLeft: '16px', paddingRight: '16px', paddingBottom: '12px' }}>
             <div style={{
               display: 'flex',
@@ -847,8 +944,8 @@ export default function MusicPlayer({
                 {connectionStatus.type === 'connecting' && (
                   <Loader size={14} style={{ color: '#f59e0b' }} />
                 )}
-                {connectionStatus.type === 'active' && (
-                  <CheckCircle size={14} style={{ color: '#10b981' }} />
+                {(connectionStatus.type === 'active' || connectionStatus.type === 'preview_active') && (
+                  <CheckCircle size={14} style={{ color: connectionStatus.color === 'blue' ? '#3b82f6' : '#10b981' }} />
                 )}
                 {(connectionStatus.type === 'device_error' || connectionStatus.type === 'error') && (
                   <AlertCircle size={14} style={{ color: '#dc2626' }} />
@@ -871,7 +968,7 @@ export default function MusicPlayer({
                 </span>
               </div>
               
-              {connectionStatus.action && (
+              {connectionStatus.action && !previewMode && (
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {connectionStatus.action === 'activate' && (
                     <button

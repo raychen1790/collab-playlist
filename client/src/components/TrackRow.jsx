@@ -1,9 +1,9 @@
-// client/src/components/TrackRow.jsx - Enhanced with advanced visual effects
+// client/src/components/TrackRow.jsx - Enhanced with Preview Mode support
 import VoteButtons from './VoteButtons.jsx';
-import { Play, Pause, Music, Zap, Activity } from 'lucide-react';
+import { Play, Pause, Music, Zap, Activity, Volume2 } from 'lucide-react';
 
 /**
- * Ultra-enhanced TrackRow with liquid animations and 3D effects
+ * Ultra-enhanced TrackRow with liquid animations, 3D effects, and preview mode support
  */
 export default function TrackRow({
   roomId,
@@ -19,8 +19,9 @@ export default function TrackRow({
   trackIndex,
   spotifyReady = false,
   spotifyActive = false,
+  previewMode = false, // NEW: preview mode flag
 }) {
-  const { trackId, title, artist, albumArt, score, spotifyId,
+  const { trackId, title, artist, albumArt, score, spotifyId, previewUrl,
           tempo, energy, danceability } = track;
 
   /* value to show beside the row, depending on sort */
@@ -39,8 +40,9 @@ export default function TrackRow({
     }
   };
 
-  const isPlayable = !!spotifyId;
-  const canPlay = isPlayable && spotifyReady && spotifyActive;
+  // Updated playability logic to handle both modes
+  const isPlayable = previewMode ? !!previewUrl : !!spotifyId;
+  const canPlay = previewMode ? isPlayable : (isPlayable && spotifyReady && spotifyActive);
 
   const getPlayButtonIcon = () => {
     if (!isPlayable) return <Music size={16} />;
@@ -49,11 +51,13 @@ export default function TrackRow({
   };
 
   const getPlayButtonTitle = () => {
-    if (!isPlayable) return 'No Spotify ID available';
-    if (!spotifyReady) return 'Connecting to Spotify...';
-    if (!spotifyActive) return 'Activate Spotify playback first';
+    if (!isPlayable) {
+      return previewMode ? 'No preview available' : 'No Spotify ID available';
+    }
+    if (!previewMode && !spotifyReady) return 'Connecting to Spotify...';
+    if (!previewMode && !spotifyActive) return 'Activate Spotify playback first';
     if (isCurrentTrack && isPlaying) return 'Pause track';
-    return 'Play track';
+    return previewMode ? 'Play 30s preview' : 'Play track';
   };
 
   // Get position indicator styling
@@ -94,7 +98,7 @@ export default function TrackRow({
         )}
       </div>
 
-      {/* Enhanced play/pause button with liquid effect */}
+      {/* Enhanced play/pause button with liquid effect and preview indicator */}
       <button
         onClick={handlePlayPauseClick}
         disabled={!canPlay}
@@ -106,6 +110,13 @@ export default function TrackRow({
         title={getPlayButtonTitle()}
       >
         {getPlayButtonIcon()}
+        
+        {/* Preview mode indicator */}
+        {previewMode && isPlayable && (
+          <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-blue-300 to-purple-300 rounded-full border border-white/50">
+            <Volume2 size={8} className="text-white p-0.5" />
+          </div>
+        )}
         
         {/* Pulsing indicator for currently playing */}
         {isCurrentTrack && isPlaying && (
@@ -165,13 +176,23 @@ export default function TrackRow({
               <div className="w-1 h-4 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
               <div className="w-1 h-2 bg-pink-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
             </div>
-            <span className="text-xs text-blue-300 font-fun font-bold">Now Playing</span>
+            <span className="text-xs text-blue-300 font-fun font-bold">
+              {previewMode ? 'Preview Playing' : 'Now Playing'}
+            </span>
           </div>
         )}
         {!isPlayable && (
           <div className="flex items-center gap-1 mt-1">
             <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-            <span className="text-xs text-yellow-300 font-main">No Spotify ID</span>
+            <span className="text-xs text-yellow-300 font-main">
+              {previewMode ? 'No Preview' : 'No Spotify ID'}
+            </span>
+          </div>
+        )}
+        {previewMode && isPlayable && (
+          <div className="flex items-center gap-1 mt-1">
+            <Volume2 size={12} className="text-blue-300" />
+            <span className="text-xs text-blue-300 font-main">30s preview</span>
           </div>
         )}
       </div>

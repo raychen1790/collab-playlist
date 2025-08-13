@@ -1,4 +1,4 @@
-// client/src/pages/RoomPage.jsx
+// client/src/pages/RoomPage.jsx - Updated with Preview Mode
 import {
   useContext,
   useEffect,
@@ -10,9 +10,9 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 import TrackRow from '../components/TrackRow.jsx';
 import MusicPlayer from '../components/MusicPlayer.jsx';
-import { useMusicPlayer } from '../hooks/useMusicPlayer.js';
+import { usePreviewMusicPlayer } from '../hooks/usePreviewMusicPlayer.js'; // Changed import
 import { supabase } from '../lib/supabaseClient.js';
-import { Play, Shuffle, Music, AlertCircle, Loader, Activity, Users, Clock, Zap } from 'lucide-react';
+import { Play, Shuffle, Music, AlertCircle, Loader, Activity, Users, Clock, Zap, Volume2, VolumeX } from 'lucide-react';
 
 export default function RoomPage() {
   const { roomId } = useParams();
@@ -27,7 +27,7 @@ export default function RoomPage() {
   
   const initialLoadDone = useRef(false);
 
-  // Music player hook
+  // Preview Music player hook (now with dual mode support)
   const {
     isPlaying,
     currentTrack,
@@ -41,6 +41,8 @@ export default function RoomPage() {
     position,
     duration,
     volume,
+    previewMode,
+    previewUrl,
     play,
     pause,
     next,
@@ -55,9 +57,8 @@ export default function RoomPage() {
     setVolume,
     seek,
     transferPlayback,
-    // NEW: user-gesture activator for Safari/iOS
-    activateAudio,
-  } = useMusicPlayer(tracks, sortMode);
+    togglePreviewMode, // New function
+  } = usePreviewMusicPlayer(tracks, sortMode);
 
   /* ------------ data loader ------------- */
   const loadRoom = useCallback(
@@ -241,6 +242,12 @@ export default function RoomPage() {
     await playTrackFromQueue(queueIndex);
   }, [playTrackFromQueue]);
 
+  // NEW: Handle mode toggle
+  const handleTogglePreviewMode = useCallback((enabled) => {
+    console.log(`🔄 Switching to ${enabled ? 'Preview' : 'Spotify'} mode`);
+    togglePreviewMode(enabled);
+  }, [togglePreviewMode]);
+
   /* ----------- render ----------- */
   if (loading) {
     return (
@@ -266,7 +273,7 @@ export default function RoomPage() {
     );
   }
 
-  const playableTracksCount = tracks.filter(t => t.spotifyId).length;
+  const playableTracksCount = tracks.filter(t => previewMode ? t.previewUrl : t.spotifyId).length;
   const hasPlayableTracks = playableTracksCount > 0;
 
   const getSortIcon = (mode) => {
@@ -283,31 +290,70 @@ export default function RoomPage() {
     <div className="min-h-screen pb-40 font-main">
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
         
-        {/* Room Header - Simplified and more prominent */}
+        {/* Room Header - Enhanced with Preview Mode Toggle */}
         <div className="glass-card p-8 text-center">
           <h1 className="playlist-title">{room.name}</h1>
           <p className="track-count">{tracks.length} Total Tracks</p>
           
-          {/* Live indicator */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-400/20 to-green-500/20 backdrop-blur-sm rounded-full border border-green-400/30 mb-6">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            <span className="text-sm font-fun font-bold text-green-100">Live</span>
+          {/* Mode Toggle - NEW */}
+          <div className="flex justify-center mb-6">
+            <div className="inline-flex items-center bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/20">
+              <button
+                onClick={() => handleTogglePreviewMode(false)}
+                className={`px-4 py-2 rounded-lg transition-all duration-300 flex items-center gap-2 ${
+                  !previewMode 
+                    ? 'bg-gradient-to-r from-green-400 to-green-500 text-white shadow-lg' 
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                <Music size={16} />
+                Full Songs
+                {!previewMode && spotifyReady && (
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                )}
+              </button>
+              <button
+                onClick={() => handleTogglePreviewMode(true)}
+                className={`px-4 py-2 rounded-lg transition-all duration-300 flex items-center gap-2 ${
+                  previewMode 
+                    ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white shadow-lg' 
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                <Volume2 size={16} />
+                Preview Mode
+                {previewMode && (
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Spotify Status */}
-          {spotifyError && (
+          {/* Mode Status Indicator */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-400/20 to-green-500/20 backdrop-blur-sm rounded-full border border-green-400/30 mb-6">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <span className="text-sm font-fun font-bold text-green-100">
+              {previewMode ? 'Preview Mode - 30s samples' : 'Full Song Mode'}
+            </span>
+          </div>
+
+          {/* Spotify Status - Only show when not in preview mode */}
+          {!previewMode && spotifyError && (
             <div className="mb-6 p-4 bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-xl">
               <div className="flex items-center gap-3">
                 <AlertCircle size={20} className="text-red-500 shrink-0" />
                 <div>
                   <p className="font-fun font-bold text-red-800">Spotify Connection Error</p>
                   <p className="text-sm text-red-600 font-medium">{spotifyError}</p>
+                  <p className="text-xs text-red-500 font-medium mt-2">
+                    💡 Try switching to Preview Mode to listen to 30-second samples
+                  </p>
                 </div>
               </div>
             </div>
           )}
 
-          {!spotifyReady && !spotifyError && (
+          {!previewMode && !spotifyReady && !spotifyError && (
             <div className="mb-6 p-4 bg-yellow-50/80 backdrop-blur-sm border border-yellow-200/50 rounded-xl">
               <div className="flex items-center gap-3">
                 <Loader size={20} className="animate-spin text-yellow-600" />
@@ -319,7 +365,7 @@ export default function RoomPage() {
             </div>
           )}
 
-          {spotifyReady && !spotifyActive && (
+          {!previewMode && spotifyReady && !spotifyActive && (
             <div className="mb-6 p-4 bg-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-xl">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-3">
@@ -340,13 +386,28 @@ export default function RoomPage() {
               </div>
             </div>
           )}
+
+          {/* Preview Mode Info */}
+          {previewMode && (
+            <div className="mb-6 p-4 bg-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-xl">
+              <div className="flex items-center gap-3">
+                <Volume2 size={20} className="text-blue-600" />
+                <div>
+                  <p className="font-fun font-bold text-blue-800">Preview Mode Active</p>
+                  <p className="text-sm text-blue-600 font-medium">
+                    Playing 30-second previews • No Spotify Premium required
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Action buttons */}
           {hasPlayableTracks && (
             <div className="flex gap-4 justify-center">
               <button
                 onClick={handlePlayAll}
-                disabled={!spotifyReady || !spotifyActive}
+                disabled={!previewMode && (!spotifyReady || !spotifyActive)}
                 className="btn-primary flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
               >
                 <Play size={20} />
@@ -355,7 +416,7 @@ export default function RoomPage() {
               {sortMode === 'votes' && (
                 <button
                   onClick={handleShuffle}
-                  disabled={!spotifyReady}
+                  disabled={!previewMode && !spotifyReady}
                   className={`btn-secondary flex items-center gap-3 disabled:opacity-50 text-lg ${
                     shuffleMode ? 'bg-gradient-to-r from-blue-400/20 to-purple-400/20 border-blue-300/50' : ''
                   }`}
@@ -372,7 +433,10 @@ export default function RoomPage() {
               <div className="flex items-center gap-3">
                 <AlertCircle size={20} className="text-yellow-600" />
                 <p className="text-sm text-yellow-800 font-medium">
-                  No tracks with Spotify IDs available. Please check that the playlist contains valid Spotify tracks.
+                  {previewMode 
+                    ? 'No tracks with preview URLs available in this playlist.'
+                    : 'No tracks with Spotify IDs available. Try switching to Preview Mode.'
+                  }
                 </p>
               </div>
             </div>
@@ -425,8 +489,9 @@ export default function RoomPage() {
                     onPlay={handlePlay}
                     onPause={handlePause}
                     trackIndex={index}
-                    spotifyReady={spotifyReady}
-                    spotifyActive={spotifyActive}
+                    spotifyReady={previewMode ? true : spotifyReady}
+                    spotifyActive={previewMode ? true : spotifyActive}
+                    previewMode={previewMode} // Pass preview mode to TrackRow
                   />
                 );
               })}
@@ -435,16 +500,16 @@ export default function RoomPage() {
         </div>
       </div>
 
-      {/* Enhanced Music Player */}
+      {/* Enhanced Music Player - Updated props */}
       {hasPlayableTracks && (
         <MusicPlayer
           tracks={playableTracks}
           sortMode={sortMode}
           isPlaying={isPlaying}
           currentTrack={currentTrack}
-          spotifyReady={spotifyReady}
-          spotifyActive={spotifyActive}
-          spotifyError={spotifyError}
+          spotifyReady={previewMode ? true : spotifyReady}
+          spotifyActive={previewMode ? true : spotifyActive}
+          spotifyError={previewMode ? null : spotifyError}
           position={position}
           duration={duration}
           volume={volume}
@@ -460,6 +525,8 @@ export default function RoomPage() {
           playQueue={playQueue}
           currentTrackIndex={currentTrackIndex}
           onPlayTrackFromQueue={handlePlayTrackFromQueue}
+          previewMode={previewMode} // NEW: Pass preview mode to player
+          previewUrl={previewUrl} // NEW: Pass current preview URL
         />
       )}
     </div>
