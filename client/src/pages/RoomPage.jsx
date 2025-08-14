@@ -1,4 +1,4 @@
-// client/src/pages/RoomPage.jsx - Updated with Preview Mode
+// client/src/pages/RoomPage.jsx - Updated with Deezer Preview Support
 import {
   useContext,
   useEffect,
@@ -10,7 +10,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 import TrackRow from '../components/TrackRow.jsx';
 import MusicPlayer from '../components/MusicPlayer.jsx';
-import { usePreviewMusicPlayer } from '../hooks/usePreviewMusicPlayer.js'; // Changed import
+import { usePreviewMusicPlayer } from '../hooks/usePreviewMusicPlayer.js'; // Now with Deezer support
 import { supabase } from '../lib/supabaseClient.js';
 import { Play, Shuffle, Music, AlertCircle, Loader, Activity, Users, Clock, Zap, Volume2, VolumeX } from 'lucide-react';
 
@@ -27,7 +27,7 @@ export default function RoomPage() {
   
   const initialLoadDone = useRef(false);
 
-  // Preview Music player hook (now with dual mode support)
+  // Enhanced Preview Music player hook (now with Deezer support)
   const {
     isPlaying,
     currentTrack,
@@ -43,6 +43,8 @@ export default function RoomPage() {
     volume,
     previewMode,
     previewUrl,
+    isLoadingPreview, // NEW: loading state
+    deezerCacheSize, // NEW: cache stats
     play,
     pause,
     next,
@@ -54,10 +56,11 @@ export default function RoomPage() {
     getPlayableTrackIndex,
     isTrackCurrentlyPlaying,
     isTrackCurrent,
+    isTrackLoading, // NEW: check if specific track is loading
     setVolume,
     seek,
     transferPlayback,
-    togglePreviewMode, // New function
+    togglePreviewMode,
   } = usePreviewMusicPlayer(tracks, sortMode);
 
   /* ------------ data loader ------------- */
@@ -242,9 +245,9 @@ export default function RoomPage() {
     await playTrackFromQueue(queueIndex);
   }, [playTrackFromQueue]);
 
-  // NEW: Handle mode toggle
+  // Handle mode toggle
   const handleTogglePreviewMode = useCallback((enabled) => {
-    console.log(`🔄 Switching to ${enabled ? 'Preview' : 'Spotify'} mode`);
+    console.log(`🔄 Switching to ${enabled ? 'Preview (Deezer)' : 'Spotify'} mode`);
     togglePreviewMode(enabled);
   }, [togglePreviewMode]);
 
@@ -273,7 +276,9 @@ export default function RoomPage() {
     );
   }
 
-  const playableTracksCount = tracks.filter(t => previewMode ? t.previewUrl : t.spotifyId).length;
+  const playableTracksCount = previewMode 
+    ? tracks.filter(t => t.title && t.artist).length 
+    : tracks.filter(t => t.spotifyId).length;
   const hasPlayableTracks = playableTracksCount > 0;
 
   const getSortIcon = (mode) => {
@@ -290,12 +295,12 @@ export default function RoomPage() {
     <div className="min-h-screen pb-40 font-main">
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
         
-        {/* Room Header - Enhanced with Preview Mode Toggle */}
+        {/* Room Header - Enhanced with Deezer Preview Mode Toggle */}
         <div className="glass-card p-8 text-center">
           <h1 className="playlist-title">{room.name}</h1>
           <p className="track-count">{tracks.length} Total Tracks</p>
           
-          {/* Mode Toggle - NEW */}
+          {/* Mode Toggle - Enhanced with Deezer info */}
           <div className="flex justify-center mb-6">
             <div className="inline-flex items-center bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/20">
               <button
@@ -329,11 +334,14 @@ export default function RoomPage() {
             </div>
           </div>
 
-          {/* Mode Status Indicator */}
+          {/* Enhanced Mode Status Indicator with Deezer info */}
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-400/20 to-green-500/20 backdrop-blur-sm rounded-full border border-green-400/30 mb-6">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             <span className="text-sm font-fun font-bold text-green-100">
-              {previewMode ? 'Preview Mode - 30s samples' : 'Full Song Mode'}
+              {previewMode 
+                ? `Preview Mode - Searching Deezer & Spotify ${deezerCacheSize > 0 ? `(${deezerCacheSize} cached)` : ''}` 
+                : 'Full Song Mode'
+              }
             </span>
           </div>
 
@@ -346,7 +354,7 @@ export default function RoomPage() {
                   <p className="font-fun font-bold text-red-800">Spotify Connection Error</p>
                   <p className="text-sm text-red-600 font-medium">{spotifyError}</p>
                   <p className="text-xs text-red-500 font-medium mt-2">
-                    💡 Try switching to Preview Mode to listen to 30-second samples
+                    💡 Try switching to Preview Mode to search Deezer & Spotify for 30-second samples
                   </p>
                 </div>
               </div>
@@ -387,7 +395,7 @@ export default function RoomPage() {
             </div>
           )}
 
-          {/* Preview Mode Info */}
+          {/* Enhanced Preview Mode Info with Deezer details */}
           {previewMode && (
             <div className="mb-6 p-4 bg-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-xl">
               <div className="flex items-center gap-3">
@@ -395,8 +403,13 @@ export default function RoomPage() {
                 <div>
                   <p className="font-fun font-bold text-blue-800">Preview Mode Active</p>
                   <p className="text-sm text-blue-600 font-medium">
-                    Playing 30-second previews • No Spotify Premium required
+                    Searching Deezer & Spotify for previews • No Spotify Premium required
                   </p>
+                  {deezerCacheSize > 0 && (
+                    <p className="text-xs text-blue-500 font-medium mt-1">
+                      {deezerCacheSize} preview{deezerCacheSize !== 1 ? 's' : ''} cached for faster playback
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -412,6 +425,9 @@ export default function RoomPage() {
               >
                 <Play size={20} />
                 Play All
+                {isLoadingPreview && (
+                  <Loader size={16} className="animate-spin" />
+                )}
               </button>
               {sortMode === 'votes' && (
                 <button
@@ -434,7 +450,7 @@ export default function RoomPage() {
                 <AlertCircle size={20} className="text-yellow-600" />
                 <p className="text-sm text-yellow-800 font-medium">
                   {previewMode 
-                    ? 'No tracks with preview URLs available in this playlist.'
+                    ? 'No tracks with title and artist available for preview search.'
                     : 'No tracks with Spotify IDs available. Try switching to Preview Mode.'
                   }
                 </p>
@@ -459,7 +475,7 @@ export default function RoomPage() {
           </div>
         </div>
 
-        {/* Tracks List - More compact */}
+        {/* Tracks List - Enhanced with loading states */}
         <div className="glass-card overflow-hidden">
           {tracks.length === 0 ? (
             <div className="p-12 text-center">
@@ -474,6 +490,7 @@ export default function RoomPage() {
               {tracks.map((track, index) => {
                 const isCurrentTrack = isTrackCurrent(index);
                 const isCurrentlyPlaying = isTrackCurrentlyPlaying(index);
+                const trackIsLoading = isTrackLoading(index);
                 
                 return (
                   <TrackRow
@@ -486,12 +503,13 @@ export default function RoomPage() {
                     position={index + 1}
                     isPlaying={isCurrentlyPlaying}
                     isCurrentTrack={isCurrentTrack}
+                    isLoading={trackIsLoading} // NEW: pass loading state
                     onPlay={handlePlay}
                     onPause={handlePause}
                     trackIndex={index}
                     spotifyReady={previewMode ? true : spotifyReady}
                     spotifyActive={previewMode ? true : spotifyActive}
-                    previewMode={previewMode} // Pass preview mode to TrackRow
+                    previewMode={previewMode}
                   />
                 );
               })}
@@ -500,7 +518,7 @@ export default function RoomPage() {
         </div>
       </div>
 
-      {/* Enhanced Music Player - Updated props */}
+      {/* Enhanced Music Player - Updated with Deezer support */}
       {hasPlayableTracks && (
         <MusicPlayer
           tracks={playableTracks}
@@ -525,8 +543,9 @@ export default function RoomPage() {
           playQueue={playQueue}
           currentTrackIndex={currentTrackIndex}
           onPlayTrackFromQueue={handlePlayTrackFromQueue}
-          previewMode={previewMode} // NEW: Pass preview mode to player
-          previewUrl={previewUrl} // NEW: Pass current preview URL
+          previewMode={previewMode}
+          previewUrl={previewUrl}
+          isLoadingPreview={isLoadingPreview} // NEW: pass loading state to player
         />
       )}
     </div>

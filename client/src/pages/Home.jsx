@@ -46,37 +46,6 @@ function LoginScreen() {
           </p>
         </div>
 
-        {/* Demo Section */}
-        <div className="glass-card glass-card--snappy p-6 mb-6 border-2 border-yellow-400/30 bg-gradient-to-br from-yellow-50/10 to-amber-50/5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl flex items-center justify-center shadow-lg">
-              <User size={20} className="text-white" />
-            </div>
-            <div>
-              <h3 className="font-title font-bold text-white text-lg">Try the Demo</h3>
-              <p className="text-white/80 text-sm">Experience UPMIX without Spotify Premium</p>
-            </div>
-          </div>
-          
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 mb-4 border border-white/20">
-            <p className="text-white/90 text-sm font-medium mb-2">Demo Login Credentials:</p>
-            <div className="space-y-1 text-white/80 text-sm font-mono">
-              <div className="flex justify-between">
-                <span>Email:</span>
-                <span className="select-all">upmixdemo@gmail.com</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Password:</span>
-                <span className="select-all">upmix2025</span>
-              </div>
-            </div>
-          </div>
-          
-          <p className="text-white/70 text-xs">
-            Use these credentials to explore all features with sample playlists and rooms
-          </p>
-        </div>
-
         {/* Features - Horizontal layout */}
         <div className="glass-card glass-card--snappy p-8 mb-8">
           <div className="space-y-6">
@@ -127,6 +96,37 @@ function LoginScreen() {
         <p className="text-center text-sm text-white/70 mt-6 font-medium">
           Requires Spotify Premium for full playback features
         </p>
+
+                {/* Demo Section */}
+        <div className="glass-card glass-card--snappy p-6 mb-6 border-2 border-yellow-400/30 bg-gradient-to-br from-yellow-50/10 to-amber-50/5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-xl flex items-center justify-center shadow-lg">
+              <User size={20} className="text-white" />
+            </div>
+            <div>
+              <h3 className="font-title font-bold text-white text-lg">Try the Demo</h3>
+              <p className="text-white/80 text-sm">Experience UPMIX without Spotify Premium</p>
+            </div>
+          </div>
+          
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 mb-4 border border-white/20">
+            <p className="text-white/90 text-sm font-medium mb-2">Demo Login Credentials:</p>
+            <div className="space-y-1 text-white/80 text-sm font-mono">
+              <div className="flex justify-between">
+                <span>Email:</span>
+                <span className="select-all">upmixdemo@gmail.com</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Password:</span>
+                <span className="select-all">upmixdemo25</span>
+              </div>
+            </div>
+          </div>
+          
+          <p className="text-white/70 text-xs">
+            Use these credentials to explore the features of this website while it is in development mode.
+          </p>
+        </div>
       </div>
     </div>
   );
