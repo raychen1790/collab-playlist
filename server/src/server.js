@@ -1,4 +1,4 @@
-// server/src/server.js - API-only server for separate frontend/backend deployments
+// server/src/server.js - Updated with Deezer proxy routes
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -9,6 +9,7 @@ import cookieParser from 'cookie-parser';
 import authRoutes from './routes/auth.js';
 import roomsRoutes from './routes/rooms.js';
 import votesRoutes from './routes/votes.js';
+import deezerRoutes from './routes/deezer.js'; // NEW: Add Deezer routes
 
 const isProd = process.env.NODE_ENV === 'production';
 const FRONTEND = process.env.FRONTEND_URI;
@@ -40,10 +41,11 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET));
 
-// API routes only - no static file serving
+// API routes
 app.use('/auth', authRoutes);
 app.use('/api/rooms', roomsRoutes);
 app.use('/api/rooms', votesRoutes);
+app.use('/api/deezer', deezerRoutes); // NEW: Add Deezer proxy routes
 
 app.get('/health', (_req, res) => res.send('Backend API is healthy'));
 
@@ -71,7 +73,9 @@ app.use((req, res) => {
       'GET /auth/*',
       'POST /auth/*',
       'GET /api/rooms/*',
-      'POST /api/rooms/*'
+      'POST /api/rooms/*',
+      'GET /api/deezer/search', // NEW
+      'GET /api/deezer/track/:id' // NEW
     ]
   });
 });
@@ -84,6 +88,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔧 Environment: ${process.env.NODE_ENV}`);
   console.log(`🌐 CORS allowed origins:`, Array.from(allowed));
   console.log(`🔗 This is an API-only server - frontend served separately`);
+  console.log(`🎵 Deezer proxy available at /api/deezer/*`);
 });
 
 // Error handling

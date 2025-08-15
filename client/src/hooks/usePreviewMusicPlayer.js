@@ -2,20 +2,24 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSpotifyWebPlayback } from './useSpotifyWebPlayback.js';
 
-// Deezer search utility with enhanced matching
-const searchDeezerTrack = async (title, artist) => {
+const searchDeezerTrack = async (title, artist, apiRequest) => {
   try {
     // Clean up search terms for better matching
     const cleanTitle = title.replace(/[\(\)\[\]]/g, '').trim();
     const cleanArtist = artist.replace(/[\(\)\[\]]/g, '').trim();
-    const query = encodeURIComponent(`${cleanTitle} ${cleanArtist}`);
+    const query = `${cleanTitle} ${cleanArtist}`;
     
-    const response = await fetch(`https://api.deezer.com/search?q=${query}&limit=5`, {
-      signal: AbortSignal.timeout(8000)
+    console.log(`🎵 Searching backend proxy for: "${query}"`);
+    
+    // Use your backend proxy instead of direct Deezer API
+    const response = await apiRequest(`/api/deezer/search?q=${encodeURIComponent(query)}&limit=5`, {
+      method: 'GET'
     });
     
     if (response.ok) {
       const data = await response.json();
+      console.log(`✅ Backend returned ${data.data?.length || 0} results`);
+      
       if (data.data && data.data.length > 0) {
         // Try to find the best match by comparing titles and artists
         const bestMatch = data.data.find(track => {
@@ -27,6 +31,7 @@ const searchDeezerTrack = async (title, artist) => {
         }) || data.data[0]; // Fallback to first result
 
         if (bestMatch && bestMatch.preview) {
+          console.log(`🎯 Best match: "${bestMatch.title}" by ${bestMatch.artist?.name}`);
           return {
             previewUrl: bestMatch.preview,
             deezerTitle: bestMatch.title,
@@ -37,14 +42,17 @@ const searchDeezerTrack = async (title, artist) => {
           };
         }
       }
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Backend proxy error:', response.status, errorData);
     }
   } catch (error) {
-    console.warn('Deezer search failed:', error.message);
+    console.warn('Deezer search via backend failed:', error.message);
   }
   return null;
 };
 
-export function usePreviewMusicPlayer(tracks, sortMode) {
+export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
   const [shuffleMode, setShuffleMode] = useState(false);
   const [playQueue, setPlayQueue] = useState([]);
@@ -309,7 +317,7 @@ export function usePreviewMusicPlayer(tracks, sortMode) {
         // If no Spotify preview or it failed, search Deezer
         if (!previewUrl) {
           console.log('Searching Deezer for:', track.title, 'by', track.artist);
-          trackData = await searchDeezerTrack(track.title, track.artist);
+          trackData = await searchDeezerTrack(track.title, track.artist, apiRequest);
           
           if (trackData && trackData.previewUrl) {
             previewUrl = trackData.previewUrl;
