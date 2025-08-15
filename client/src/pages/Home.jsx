@@ -141,7 +141,7 @@ function AuthedHome() {
   const [creating, setCreating] = useState(false);
   const [joinId, setJoinId] = useState('');
 
-  const demoRoomId = '139113a6-dc93-453f-9fd3-461e7f00df81';
+  const demoRoomId = 'ea3b4ad0-5318-43e0-a906-23fec4565469';
 
   const getPlaylistId = (inp) => {
     try { return new URL(inp).pathname.split('/').pop(); }
