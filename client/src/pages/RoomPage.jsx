@@ -1,4 +1,4 @@
-// client/src/pages/RoomPage.jsx - Updated with Deezer Preview Support
+// client/src/pages/RoomPage.jsx - Updated with Deezer Preview Support + user-initiated flags
 import {
   useContext,
   useEffect,
@@ -10,16 +10,15 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 import TrackRow from '../components/TrackRow.jsx';
 import MusicPlayer from '../components/MusicPlayer.jsx';
-import { usePreviewMusicPlayer } from '../hooks/usePreviewMusicPlayer.js'; // Now with Deezer support
+import { usePreviewMusicPlayer } from '../hooks/usePreviewMusicPlayer.js';
 import { supabase } from '../lib/supabaseClient.js';
-import { Play, Shuffle, Music, AlertCircle, Loader, Activity, Users, Clock, Zap, Volume2, VolumeX } from 'lucide-react';
+import { Play, Shuffle, Music, AlertCircle, Loader, Activity, Users, Clock, Zap, Volume2 } from 'lucide-react';
 
 export default function RoomPage() {
   const { roomId } = useParams();
   const { user, apiRequest } = useContext(AuthContext);
   const [search, setSearch] = useSearchParams();
 
-  /* ---------------- state ---------------- */
   const [room, setRoom] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,50 +26,47 @@ export default function RoomPage() {
   
   const initialLoadDone = useRef(false);
 
-  // Enhanced Preview Music player hook (now with Deezer support)
   const {
-  isPlaying,
-  currentTrack,
-  currentTrackIndex,
-  shuffleMode,
-  playableTracks,
-  playQueue,
-  spotifyReady,
-  spotifyActive,
-  spotifyError,
-  position,
-  duration,
-  volume,
-  previewMode,
-  previewUrl,
-  isLoadingPreview,
-  deezerCacheSize,
-  play,
-  pause,
-  next,
-  previous,
-  toggleShuffle,
-  playAll,
-  playTrackByOriginalIndex,
-  playTrackFromQueue,
-  getPlayableTrackIndex,
-  isTrackCurrentlyPlaying,
-  isTrackCurrent,
-  isTrackLoading,
-  setVolume,
-  seek,
-  transferPlayback,
-  togglePreviewMode,
-} = usePreviewMusicPlayer(tracks, sortMode, apiRequest);
+    isPlaying,
+    currentTrack,
+    currentTrackIndex,
+    shuffleMode,
+    playableTracks,
+    playQueue,
+    spotifyReady,
+    spotifyActive,
+    spotifyError,
+    position,
+    duration,
+    volume,
+    previewMode,
+    previewUrl,
+    isLoadingPreview,
+    deezerCacheSize,
+    play,
+    pause,
+    next,
+    previous,
+    toggleShuffle,
+    playAll,
+    playTrackByOriginalIndex,
+    playTrackFromQueue,
+    getPlayableTrackIndex,
+    isTrackCurrentlyPlaying,
+    isTrackCurrent,
+    isTrackLoading,
+    setVolume,
+    seek,
+    transferPlayback,
+    togglePreviewMode,
+  } = usePreviewMusicPlayer(tracks, sortMode, apiRequest);
 
   /* ------------ data loader ------------- */
   const loadRoom = useCallback(
     async (mode = sortMode) => {
       setLoading(true);
       try {
-        // Use the enhanced apiRequest function
         const res = await apiRequest(`/api/rooms/${roomId}?sort=${mode}`);
-        
         if (res.ok) {
           const json = await res.json();
           setRoom(json.room);
@@ -107,7 +103,6 @@ export default function RoomPage() {
         return track;
       });
       
-      // Re-sort based on current sort mode
       let sortedTracks;
       if (['tempo', 'energy', 'dance'].includes(sortMode)) {
         const key = sortMode === 'dance' ? 'danceability' : sortMode;
@@ -131,67 +126,35 @@ export default function RoomPage() {
       .channel(`room-${roomId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'votes',
-        },
+        { event: '*', schema: 'public', table: 'votes' },
         async (payload) => {
-          console.log('🗳️ Vote change detected:', {
-            eventType: payload.eventType,
-            new: payload.new,
-            old: payload.old
-          });
-          
           const trackId = payload.new?.track_id || payload.old?.track_id;
-          if (!trackId) {
-            console.warn('No track_id found in vote change payload');
-            return;
-          }
+          if (!trackId) return;
 
           try {
-            console.log(`🔍 Fetching updated votes for track ${trackId}`);
             const { data: votes, error } = await supabase
               .from('votes')
               .select('vote')
               .eq('track_id', trackId);
-            
-            if (error) {
-              console.error('Error fetching votes:', error);
-              return;
-            }
-            
+            if (error) return;
             if (votes) {
               const newScore = votes.reduce((sum, v) => sum + v.vote, 0);
-              console.log(`✅ New score for track ${trackId}: ${newScore} (from ${votes.length} votes)`);
               handleTrackUpdate(trackId, newScore);
             }
           } catch (error) {
             console.error('Failed to fetch updated votes:', error);
-            console.log('📥 Fallback: reloading entire room');
             loadRoom();
           }
         }
       )
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'tracks',
-          filter: `room_id=eq.${roomId}`,
-        },
-        () => {
-          console.log('➕ New track added, reloading room');
-          loadRoom();
-        }
+        { event: 'INSERT', schema: 'public', table: 'tracks', filter: `room_id=eq.${roomId}` },
+        () => loadRoom()
       )
-      .subscribe((status) => {
-        console.log('📡 Real-time subscription status:', status);
-      });
+      .subscribe();
 
     return () => {
-      console.log('🔌 Cleaning up real-time subscription');
       supabase.removeChannel(channel);
     };
   }, [roomId, handleTrackUpdate, loadRoom]);
@@ -199,17 +162,16 @@ export default function RoomPage() {
   /* ----------- sort-mode toolbar ---------- */
   const changeSort = useCallback((mode) => {
     if (mode === sortMode) return;
-    
     setSearch({ sort: mode });
     loadRoom(mode);
   }, [sortMode, setSearch, loadRoom]);
 
-  /* ----------- music player handlers ----------- */
+  /* ----------- music player handlers (user-initiated flags) ----------- */
   const handlePlay = useCallback(async (trackIndex = null) => {
     if (trackIndex !== null) {
-      await playTrackByOriginalIndex(trackIndex);
+      await playTrackByOriginalIndex(trackIndex); // hook forwards userInitiated=true
     } else {
-      await play();
+      await play(null, true); // explicit user-initiated
     }
   }, [playTrackByOriginalIndex, play]);
 
@@ -218,11 +180,11 @@ export default function RoomPage() {
   }, [pause]);
 
   const handleNext = useCallback(async () => {
-    await next();
+    await next(true); // user-initiated
   }, [next]);
 
   const handlePrevious = useCallback(async () => {
-    await previous();
+    await previous(true); // user-initiated
   }, [previous]);
 
   const handleShuffle = useCallback(() => {
@@ -230,7 +192,7 @@ export default function RoomPage() {
   }, [toggleShuffle]);
 
   const handlePlayAll = useCallback(async () => {
-    await playAll();
+    await playAll(); // inside hook calls play(..., true)
   }, [playAll]);
 
   const handleSeek = useCallback(async (positionMs) => {
@@ -242,10 +204,9 @@ export default function RoomPage() {
   }, [setVolume]);
 
   const handlePlayTrackFromQueue = useCallback(async (queueIndex) => {
-    await playTrackFromQueue(queueIndex);
+    await playTrackFromQueue(queueIndex); // hook forwards userInitiated=true
   }, [playTrackFromQueue]);
 
-  // Handle mode toggle
   const handleTogglePreviewMode = useCallback((enabled) => {
     console.log(`🔄 Switching to ${enabled ? 'Preview (Deezer)' : 'Spotify'} mode`);
     togglePreviewMode(enabled);
@@ -300,7 +261,6 @@ export default function RoomPage() {
           <h1 className="playlist-title">{room.name}</h1>
           <p className="track-count">{tracks.length} Total Tracks</p>
           
-          {/* Mode Toggle - Enhanced with Deezer info */}
           <div className="flex justify-center mb-6">
             <div className="inline-flex items-center bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/20">
               <button
@@ -334,7 +294,6 @@ export default function RoomPage() {
             </div>
           </div>
 
-          {/* Enhanced Mode Status Indicator with Deezer info */}
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-400/20 to-green-500/20 backdrop-blur-sm rounded-full border border-green-400/30 mb-6">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
             <span className="text-sm font-fun font-bold text-green-100">
@@ -345,7 +304,6 @@ export default function RoomPage() {
             </span>
           </div>
 
-          {/* Spotify Status - Only show when not in preview mode */}
           {!previewMode && spotifyError && (
             <div className="mb-6 p-4 bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-xl">
               <div className="flex items-center gap-3">
@@ -395,7 +353,6 @@ export default function RoomPage() {
             </div>
           )}
 
-          {/* Enhanced Preview Mode Info with Deezer details */}
           {previewMode && (
             <div className="mb-6 p-4 bg-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-xl">
               <div className="flex items-center gap-3">
@@ -415,7 +372,6 @@ export default function RoomPage() {
             </div>
           )}
           
-          {/* Action buttons */}
           {hasPlayableTracks && (
             <div className="flex gap-4 justify-center">
               <button
@@ -459,7 +415,7 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* Sort Toolbar - Enhanced buttons */}
+        {/* Sort Toolbar */}
         <div className="glass-card p-6">
           <div className="flex flex-wrap gap-3 justify-center">
             {['votes', 'tempo', 'energy', 'dance'].map((mode) => (
@@ -475,7 +431,7 @@ export default function RoomPage() {
           </div>
         </div>
 
-        {/* Tracks List - Enhanced with loading states */}
+        {/* Tracks List */}
         <div className="glass-card overflow-hidden">
           {tracks.length === 0 ? (
             <div className="p-12 text-center">
@@ -503,7 +459,7 @@ export default function RoomPage() {
                     position={index + 1}
                     isPlaying={isCurrentlyPlaying}
                     isCurrentTrack={isCurrentTrack}
-                    isLoading={trackIsLoading} // NEW: pass loading state
+                    isLoading={trackIsLoading}
                     onPlay={handlePlay}
                     onPause={handlePause}
                     trackIndex={index}
@@ -518,7 +474,7 @@ export default function RoomPage() {
         </div>
       </div>
 
-      {/* Enhanced Music Player - Updated with Deezer support */}
+      {/* Music Player */}
       {hasPlayableTracks && (
         <MusicPlayer
           tracks={playableTracks}
@@ -545,7 +501,7 @@ export default function RoomPage() {
           onPlayTrackFromQueue={handlePlayTrackFromQueue}
           previewMode={previewMode}
           previewUrl={previewUrl}
-          isLoadingPreview={isLoadingPreview} // NEW: pass loading state to player
+          isLoadingPreview={isLoadingPreview}
         />
       )}
     </div>
