@@ -278,7 +278,7 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   /* ----------------- preload next previews when in preview mode ----------------- */
 useEffect(() => {
   preloadUpcomingTracks();
-}, [preloadUpcomingTracks, currentQueueIndex, playQueue.length]);
+}, [currentQueueIndex, playQueue.length, previewMode]);
 
   /* ----------------- shuffle helper ----------------- */
   const createWeightedShuffle = useCallback((excludeTrackIndex = null) => {
@@ -565,7 +565,6 @@ const preloadUpcomingTracks = useCallback(async () => {
   // Don't await all - let them complete in background
   Promise.allSettled(preloadPromises);
 }, [currentQueueIndex, playQueue, playableTracks, apiRequest, preloadAudioHref, previewMode]);
-
 
   const pausePreview = useCallback(() => {
     if (audioRef.current) {
