@@ -695,7 +695,18 @@ const play = useCallback(async (originalTrackIndex = null, userInitiated = false
     
     if (!success && userInitiated && playQueue.length > 1) {
       console.log('🔄 First track failed, trying next...');
-      return await next(true);
+      // Manually go to next track without calling next() to avoid circular dependency
+      const nextQueueIdx = (currentQueueIndex + 1) % playQueue.length;
+      const nextOriginalTrackIndex = playQueue[nextQueueIdx];
+      setCurrentQueueIndex(nextQueueIdx);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Find playable index for next track
+      const nextTrack = tracks[nextOriginalTrackIndex];
+      const nextPlayableIndex = playableTracks.findIndex(pt => pt.trackId === nextTrack?.trackId);
+      if (nextPlayableIndex >= 0) {
+        return await playPreviewTrack(nextPlayableIndex, { userInitiated });
+      }
     }
     
     return success;
@@ -739,6 +750,7 @@ const play = useCallback(async (originalTrackIndex = null, userInitiated = false
 ]);
 
   // FIXED: Ensure queue index is properly updated before playing
+// FIXED: next function
 const next = useCallback(async (userInitiated = false) => {
   console.log('⏭️ next() called, userInitiated:', userInitiated);
   if (!tracks.length || !playQueue.length || isChangingTracks.current) {
