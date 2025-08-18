@@ -764,9 +764,12 @@ const next = useCallback(async (userInitiated = false) => {
   console.log(`⏭️ Moving from queue position ${currentQueueIndex} to ${nextQueueIdx}`);
   console.log(`⏭️ Next track: "${tracks[nextOriginalTrackIndex]?.title}"`);
   
+  // FIXED: Set index first, wait, then play with proper index
   setCurrentQueueIndex(nextQueueIdx);
-  await new Promise(resolve => setTimeout(resolve, 50));
-  await play(nextOriginalTrackIndex, userInitiated);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // FIXED: Play with userInitiated flag to ensure immediate playback
+  await play(nextOriginalTrackIndex, userInitiated || true);
 }, [tracks, playQueue, currentQueueIndex, play]);
 
 
@@ -777,16 +780,20 @@ const previous = useCallback(async (userInitiated = false) => {
     return;
   }
   
-  const prevQueueIdx = currentQueueIndex - 1;
-  const targetQueueIdx = prevQueueIdx >= 0 ? prevQueueIdx : playQueue.length - 1;
-  const targetOriginalTrackIndex = playQueue[targetQueueIdx];
+  // FIXED: Proper previous logic
+  const prevQueueIdx = currentQueueIndex === 0 
+    ? playQueue.length - 1 
+    : currentQueueIndex - 1;
+  const targetOriginalTrackIndex = playQueue[prevQueueIdx];
   
-  console.log(`⏮️ Moving from queue position ${currentQueueIndex} to ${targetQueueIdx}`);
+  console.log(`⏮️ Moving from queue position ${currentQueueIndex} to ${prevQueueIdx}`);
   console.log(`⏮️ Previous track: "${tracks[targetOriginalTrackIndex]?.title}"`);
   
-  setCurrentQueueIndex(targetQueueIdx);
-  await new Promise(resolve => setTimeout(resolve, 50));
-  await play(targetOriginalTrackIndex, userInitiated);
+  setCurrentQueueIndex(prevQueueIdx);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // FIXED: Play with userInitiated flag to ensure immediate playback
+  await play(targetOriginalTrackIndex, userInitiated || true);
 }, [tracks, playQueue, currentQueueIndex, play]);
 
 
@@ -848,19 +855,22 @@ const playAll = useCallback(async () => {
   console.log(`🎵 Setting up queue with ${newQueue.length} tracks`);
   console.log(`🎵 First track: "${tracks[newQueue[0]]?.title}"`);
   
+  // FIXED: Set queue and index synchronously, then wait before playing
   setPlayQueue(newQueue);
   setCurrentQueueIndex(0);
   
-  await new Promise(resolve => setTimeout(resolve, 50));
+  // FIXED: Wait longer for state to update properly
+  await new Promise(resolve => setTimeout(resolve, 100));
   const success = await play(newQueue[0], true);
   
   if (!success && newQueue.length > 1) {
     console.log('❌ First track failed, trying next...');
     setCurrentQueueIndex(1);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 100));
     await play(newQueue[1], true);
   }
 }, [tracks, shuffleMode, createWeightedShuffle, originalQueue, play, previewMode]);
+
 
 
 // Seek function
@@ -943,47 +953,54 @@ const playTrackByOriginalIndex = useCallback(async (originalTrackIndex) => {
     return;
   }
   
-  // Find this track in current queue
-  const queueIdx = playQueue.findIndex(i => i === originalTrackIndex);
+  // FIXED: Find this track in current queue using ORIGINAL indices
+  const queueIdx = playQueue.findIndex(queueOriginalIndex => queueOriginalIndex === originalTrackIndex);
   if (queueIdx >= 0) {
     console.log(`🎯 Found track in queue at position ${queueIdx}`);
     setCurrentQueueIndex(queueIdx);
   } else {
     console.log('🔄 Track not in queue, adding to front');
-    // Add to front of queue
+    // FIXED: Add original index to front of queue
     const newQueue = [originalTrackIndex, ...playQueue.filter(i => i !== originalTrackIndex)];
     setPlayQueue(newQueue);
     setCurrentQueueIndex(0);
   }
   
-  await new Promise(resolve => setTimeout(resolve, 50));
-  await play(originalTrackIndex, true);
+  // FIXED: Wait for state update and always play immediately
+  await new Promise(resolve => setTimeout(resolve, 100));
+  await play(originalTrackIndex, true); // Always user initiated for immediate playback
 }, [tracks, previewMode, playQueue, play]);
 
+// FIXED: playTrackFromQueue - was not ensuring immediate playback
 const playTrackFromQueue = useCallback(async (queueIndex) => {
   console.log(`🎯 playTrackFromQueue(${queueIndex})`);
   if (queueIndex < 0 || queueIndex >= playQueue.length) {
     console.log('❌ Invalid queue index');
     return;
   }
+  
+  const originalTrackIndex = playQueue[queueIndex];
+  console.log(`🎯 Queue position ${queueIndex} = original track ${originalTrackIndex}: "${tracks[originalTrackIndex]?.title}"`);
+  
   setCurrentQueueIndex(queueIndex);
-  await new Promise(resolve => setTimeout(resolve, 10));
-  await play(playQueue[queueIndex], true); // user initiated
-}, [playQueue, play]);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // FIXED: Always user initiated to ensure immediate playback
+  await play(originalTrackIndex, true);
+}, [playQueue, play, tracks]);
+
 
 const isTrackCurrentlyPlaying = useCallback((originalTrackIndex) => {
-  const idx = getPlayableTrackIndex(originalTrackIndex);
-  if (idx < 0) return false;
-  const cur = playQueue[currentQueueIndex];
-  return cur === idx && isPlaying;
-}, [getPlayableTrackIndex, playQueue, currentQueueIndex, isPlaying]);
+  // FIXED: Compare original indices directly
+  const currentOriginalIndex = playQueue[currentQueueIndex];
+  return currentOriginalIndex === originalTrackIndex && isPlaying;
+}, [playQueue, currentQueueIndex, isPlaying]);
 
 const isTrackCurrent = useCallback((originalTrackIndex) => {
-  const idx = getPlayableTrackIndex(originalTrackIndex);
-  if (idx < 0) return false;
-  const cur = playQueue[currentQueueIndex];
-  return cur === idx;
-}, [getPlayableTrackIndex, playQueue, currentQueueIndex]);
+  // FIXED: Compare original indices directly  
+  const currentOriginalIndex = playQueue[currentQueueIndex];
+  return currentOriginalIndex === originalTrackIndex;
+}, [playQueue, currentQueueIndex]);
 
 const isTrackLoading = useCallback((originalTrackIndex) => {
   const originalTrack = tracks[originalTrackIndex];
