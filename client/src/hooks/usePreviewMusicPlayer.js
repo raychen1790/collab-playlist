@@ -611,18 +611,19 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
 
   /* ----------------- unified transport controls (user-gesture aware) ----------------- */
   const play = useCallback(async (trackIndex = null, userInitiated = false) => {
-    console.log(`🎯 play() called with trackIndex: ${trackIndex}, previewMode: ${previewMode}, userInitiated: ${userInitiated}`);
+  console.log(`🎯 play() called with trackIndex: ${trackIndex}, previewMode: ${previewMode}, userInitiated: ${userInitiated}`);
+  
+  if (!playableTracks.length || isChangingTracks.current) {
+    console.log('❌ Cannot play - no tracks or already changing');
+    return false;
+  }
+  
+  if (previewMode) {
+    if (userInitiated) await ensureAudioUnlocked();
     
-    if (!playableTracks.length || isChangingTracks.current) {
-      console.log('❌ Cannot play - no tracks or already changing');
-      return false;
-    }
-    
-    if (previewMode) {
-      if (userInitiated) await ensureAudioUnlocked();
-      
-      // FIXED: If resuming current track and it's the right one
-      if (trackIndex === null && currentTrack && !previewIsPlaying && audioRef.current?.src) {
+    // FIXED: When trackIndex is null, use current queue to get the track index
+    if (trackIndex === null) {
+      if (currentTrack && !previewIsPlaying && audioRef.current?.src) {
         const currentPlayableIndex = playQueue[currentQueueIndex];
         const currentPlayableTrack = playableTracks[currentPlayableIndex];
         
@@ -631,50 +632,52 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
           console.log('⏯️ Resuming current preview track');
           return await resumePreview();
         }
-      } 
-      
-      // Playing new track or starting from scratch
-      const targetIndex = trackIndex !== null ? trackIndex : playQueue[currentQueueIndex];
-      console.log(`🎵 Playing preview track at index: ${targetIndex}`);
-      const success = await playPreviewTrack(targetIndex, { userInitiated });
-      
-      if (!success && userInitiated && playQueue.length > 1) {
-        console.log('🔄 First track failed, trying next...');
-        const nextQueueIndex = (currentQueueIndex + 1) % playQueue.length;
-        setCurrentQueueIndex(nextQueueIndex);
-        return await playPreviewTrack(playQueue[nextQueueIndex], { userInitiated });
       }
-      
-      return success;
-    } else {
-      // Spotify mode logic
-      isChangingTracks.current = true;
-      try {
-        if (trackIndex === null && currentTrack && !isPlaying) {
-          await toggleSpotifyPlay();
-          return true;
-        }
-        const targetIndex = trackIndex !== null ? trackIndex : playQueue[currentQueueIndex];
-        return await ensureSpotifyReady(targetIndex);
-      } finally {
-        setTimeout(() => { isChangingTracks.current = false; }, 500);
-      }
+      // Get track index from current queue position
+      trackIndex = playQueue[currentQueueIndex];
     }
-  }, [
-    playableTracks, 
-    playQueue, 
-    currentQueueIndex, 
-    previewMode, 
-    currentTrack, 
-    previewIsPlaying,
-    resumePreview, 
-    playPreviewTrack, 
-    toggleSpotifyPlay, 
-    ensureSpotifyReady, 
-    ensureAudioUnlocked,
-    previewCurrentTrackId,
-    isPlaying
-  ]);
+    
+    console.log(`🎵 Playing preview track at index: ${trackIndex}`);
+    const success = await playPreviewTrack(trackIndex, { userInitiated });
+    
+    if (!success && userInitiated && playQueue.length > 1) {
+      console.log('🔄 First track failed, trying next...');
+      const nextQueueIndex = (currentQueueIndex + 1) % playQueue.length;
+      setCurrentQueueIndex(nextQueueIndex);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      return await playPreviewTrack(playQueue[nextQueueIndex], { userInitiated });
+    }
+    
+    return success;
+  } else {
+    // Spotify mode logic (unchanged)
+    isChangingTracks.current = true;
+    try {
+      if (trackIndex === null && currentTrack && !isPlaying) {
+        await toggleSpotifyPlay();
+        return true;
+      }
+      const targetIndex = trackIndex !== null ? trackIndex : playQueue[currentQueueIndex];
+      return await ensureSpotifyReady(targetIndex);
+    } finally {
+      setTimeout(() => { isChangingTracks.current = false; }, 500);
+    }
+  }
+}, [
+  playableTracks, 
+  playQueue, 
+  currentQueueIndex, 
+  previewMode, 
+  currentTrack, 
+  previewIsPlaying,
+  resumePreview, 
+  playPreviewTrack, 
+  toggleSpotifyPlay, 
+  ensureSpotifyReady, 
+  ensureAudioUnlocked,
+  previewCurrentTrackId,
+  isPlaying
+]);
 
   const pause = useCallback(async () => {
     console.log(`⏸️ pause() called, previewMode: ${previewMode}`);
@@ -688,7 +691,7 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   }, [previewMode, pausePreview, spotifyReady, toggleSpotifyPlay]);
 
   // FIXED: Ensure queue index is properly updated before playing
-  const next = useCallback(async (userInitiated = false) => {
+const next = useCallback(async (userInitiated = false) => {
   console.log('⏭️ next() called, userInitiated:', userInitiated);
   if (!playableTracks.length || !playQueue.length || isChangingTracks.current) {
     console.log('❌ Cannot go to next - no tracks or already changing');
@@ -696,21 +699,24 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   }
   if (playQueue.length === 1) {
     console.log('🔄 Only one track in queue, restarting');
+    const trackIndex = playQueue[0];
+    await play(trackIndex, userInitiated);
     return;
   }
   
-  const nextIdx = currentQueueIndex + 1;
-  if (nextIdx < playQueue.length) {
-    console.log(`⏭️ Going to next track: ${nextIdx}`);
-    setCurrentQueueIndex(nextIdx);
-    // FIXED: Wait for state update and properly await play
-    await new Promise(resolve => setTimeout(resolve, 10));
-    await play(playQueue[nextIdx], userInitiated);
+  const nextQueueIdx = currentQueueIndex + 1;
+  if (nextQueueIdx < playQueue.length) {
+    console.log(`⏭️ Going to next track at queue position: ${nextQueueIdx}`);
+    setCurrentQueueIndex(nextQueueIdx);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const trackIndex = playQueue[nextQueueIdx]; // Get actual track index from queue
+    await play(trackIndex, userInitiated);
   } else {
     console.log('🔄 End of queue, restarting from beginning');
     setCurrentQueueIndex(0);
-    await new Promise(resolve => setTimeout(resolve, 10));
-    await play(playQueue[0], userInitiated);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const trackIndex = playQueue[0];
+    await play(trackIndex, userInitiated);
   }
 }, [playableTracks.length, playQueue, currentQueueIndex, play]);
 
@@ -722,21 +728,24 @@ const previous = useCallback(async (userInitiated = false) => {
     return;
   }
   
-  const prevIdx = currentQueueIndex - 1;
-  if (prevIdx >= 0) {
-    console.log(`⏮️ Going to previous track: ${prevIdx}`);
-    setCurrentQueueIndex(prevIdx);
-    // FIXED: Wait for state update and properly await play
-    await new Promise(resolve => setTimeout(resolve, 10));
-    await play(playQueue[prevIdx], userInitiated);
+  const prevQueueIdx = currentQueueIndex - 1;
+  if (prevQueueIdx >= 0) {
+    console.log(`⏮️ Going to previous track at queue position: ${prevQueueIdx}`);
+    setCurrentQueueIndex(prevQueueIdx);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const trackIndex = playQueue[prevQueueIdx]; // Get actual track index from queue
+    await play(trackIndex, userInitiated);
   } else {
-    console.log('🔄 At beginning, going to end');
-    const lastIdx = playQueue.length - 1;
-    setCurrentQueueIndex(lastIdx);
-    await new Promise(resolve => setTimeout(resolve, 10));
-    await play(playQueue[lastIdx], userInitiated);
+    console.log('🔄 At beginning, going to end of queue');
+    const lastQueueIdx = playQueue.length - 1;
+    setCurrentQueueIndex(lastQueueIdx);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const trackIndex = playQueue[lastQueueIdx];
+    await play(trackIndex, userInitiated);
   }
 }, [playableTracks.length, playQueue, currentQueueIndex, play]);
+
+
 
 const toggleShuffle = useCallback(() => {
   console.log('🔀 toggleShuffle() called');
@@ -775,20 +784,21 @@ const playAll = useCallback(async () => {
     q = [...originalQueue];
     setPlayQueue(q);
   }
-  const first = q[0];
-  console.log(`🎵 Playing first track in queue: ${first}`);
+  
+  console.log(`🎵 Setting up queue with first track: ${q[0]}`);
   setCurrentQueueIndex(0);
   
-  // FIXED: Wait for state updates before playing
-  await new Promise(resolve => setTimeout(resolve, 20));
-  const success = await play(first, true); // user initiated
-  if (!success) {
-    console.log('❌ Failed to play first track, trying next...');
-    if (q.length > 1) {
-      setCurrentQueueIndex(1);
-      await new Promise(resolve => setTimeout(resolve, 10));
-      await play(q[1], true);
-    }
+  // FIXED: Wait for state updates, then play the actual track index (not queue index)
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const firstTrackIndex = q[0]; // This is the actual track index in playableTracks
+  const success = await play(firstTrackIndex, true); // Play the track index, not queue index
+  
+  if (!success && q.length > 1) {
+    console.log('❌ First track failed, trying next...');
+    setCurrentQueueIndex(1);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const secondTrackIndex = q[1];
+    await play(secondTrackIndex, true);
   }
 }, [playableTracks.length, shuffleMode, createWeightedShuffle, originalQueue, play, previewMode]);
 
@@ -858,22 +868,28 @@ const getPlayableTrackIndex = useCallback((originalTrackIndex) => {
 
 const playTrackByOriginalIndex = useCallback(async (originalTrackIndex) => {
   console.log(`🎯 playTrackByOriginalIndex(${originalTrackIndex})`);
-  const idx = getPlayableTrackIndex(originalTrackIndex);
-  if (idx < 0) {
+  const playableTrackIdx = getPlayableTrackIndex(originalTrackIndex);
+  if (playableTrackIdx < 0) {
     console.log('❌ Track not playable:', tracks[originalTrackIndex]?.title || 'Unknown');
     return;
   }
   
-  // FIXED: Find the queue index for this track
-  const qIdx = playQueue.findIndex(i => i === idx);
-  if (qIdx >= 0) {
-    console.log(`🎯 Found track at queue index ${qIdx}, playable index ${idx}`);
-    setCurrentQueueIndex(qIdx);
-    // FIXED: Wait for state update then play the correct track
-    await new Promise(resolve => setTimeout(resolve, 10));
-    await play(idx, true); // user initiated - play the actual track index
+  // FIXED: Find the queue index for this playable track index
+  const queueIdx = playQueue.findIndex(i => i === playableTrackIdx);
+  if (queueIdx >= 0) {
+    console.log(`🎯 Found track at queue index ${queueIdx}, playable track index ${playableTrackIdx}`);
+    setCurrentQueueIndex(queueIdx);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    // Play the actual playable track index, not the queue index
+    await play(playableTrackIdx, true);
   } else {
-    console.log('❌ Track not found in current queue');
+    console.log('❌ Track not found in current queue, adding to front');
+    // If track not in current queue, add it to the front and play
+    const newQueue = [playableTrackIdx, ...playQueue.filter(i => i !== playableTrackIdx)];
+    setPlayQueue(newQueue);
+    setCurrentQueueIndex(0);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    await play(playableTrackIdx, true);
   }
 }, [getPlayableTrackIndex, play, playQueue, tracks]);
 
