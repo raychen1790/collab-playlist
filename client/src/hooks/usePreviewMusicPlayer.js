@@ -359,204 +359,205 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   }, [playableTracks, sortMode]);
 
   /* ----------------- Enhanced preview playback with immediate user-gesture play ----------------- */
-  const playPreviewTrack = useCallback(async (trackIndex, { userInitiated = false } = {}) => {
-    console.log(`🎯 playPreviewTrack called with index: ${trackIndex}, userInitiated: ${userInitiated}`);
+const playPreviewTrack = useCallback(async (playableTrackIndex, { userInitiated = false } = {}) => {
+  console.log(`🎯 playPreviewTrack called with playable index: ${playableTrackIndex}, userInitiated: ${userInitiated}`);
+  
+  if (!audioRef.current || !playableTracks[playableTrackIndex]) {
+    console.error('❌ No audio element or invalid playable track index');
+    return false;
+  }
+  
+  const track = playableTracks[playableTrackIndex];
+  console.log(`🎵 Playing preview for: "${track.title}" by ${track.artist} (playable index: ${playableTrackIndex})`);
+  
+  // Rest of the function remains the same...
+  const cacheKey = `${track.title}-${track.artist}`.toLowerCase();
+  
+  if (failedSearchesRef.current.has(cacheKey)) {
+    console.log('⏭️ Skipping recently failed search for:', track.title);
+    return false;
+  }
+  
+  setPreviewLoadingTrack(track.trackId);
+  setPreviewCurrentTrackId(track.trackId);
+  isChangingTracks.current = true;
+  
+  try {
+    const audio = audioRef.current;
+    audio.pause();
+    audio.currentTime = 0;
+    setPreviewPosition(0);
+    setPreviewIsPlaying(false);
     
-    if (!audioRef.current || !playableTracks[trackIndex]) {
-      console.error('❌ No audio element or invalid track index');
-      return false;
-    }
-    
-    const track = playableTracks[trackIndex];
-    const cacheKey = `${track.title}-${track.artist}`.toLowerCase();
-    
-    console.log(`🎵 Playing preview for: "${track.title}" by ${track.artist}`);
-    
-    if (failedSearchesRef.current.has(cacheKey)) {
-      console.log('⏭️ Skipping recently failed search for:', track.title);
-      return false;
-    }
-    
-    setPreviewLoadingTrack(track.trackId);
-    setPreviewCurrentTrackId(track.trackId);
-    isChangingTracks.current = true;
-    
-    try {
-      const audio = audioRef.current;
-      audio.pause();
-      audio.currentTime = 0;
-      setPreviewPosition(0);
-      setPreviewIsPlaying(false);
-      
-      let previewUrl = null;
-      let trackData = null;
-      let source = 'unknown';
+    let previewUrl = null;
+    let trackData = null;
+    let source = 'unknown';
 
-      // Cache first
-      if (deezerCacheRef.current.has(cacheKey)) {
-        trackData = deezerCacheRef.current.get(cacheKey);
-        previewUrl = trackData.previewUrl;
-        source = 'cache';
-        console.log('📦 Using cached data for:', track.title);
-      } else {
-        // Try Spotify preview URL first
-        if (track.previewUrl) {
-          try {
-            console.log('🎧 Testing Spotify preview URL...');
-            const testResponse = await fetch(track.previewUrl, { 
-              method: 'HEAD',
-              signal: AbortSignal.timeout(3000)
-            });
-            if (testResponse.ok) {
-              previewUrl = track.previewUrl;
-              source = 'spotify';
-              console.log('✅ Using Spotify preview for:', track.title);
-            } else {
-              console.log('❌ Spotify preview failed, status:', testResponse.status);
-            }
-          } catch (e) {
-            console.log('❌ Spotify preview not accessible:', e.message);
+    // Cache first
+    if (deezerCacheRef.current.has(cacheKey)) {
+      trackData = deezerCacheRef.current.get(cacheKey);
+      previewUrl = trackData.previewUrl;
+      source = 'cache';
+      console.log('📦 Using cached data for:', track.title);
+    } else {
+      // Try Spotify preview URL first
+      if (track.previewUrl) {
+        try {
+          console.log('🎧 Testing Spotify preview URL...');
+          const testResponse = await fetch(track.previewUrl, { 
+            method: 'HEAD',
+            signal: AbortSignal.timeout(3000)
+          });
+          if (testResponse.ok) {
+            previewUrl = track.previewUrl;
+            source = 'spotify';
+            console.log('✅ Using Spotify preview for:', track.title);
+          } else {
+            console.log('❌ Spotify preview failed, status:', testResponse.status);
           }
-        }
-        
-        if (!previewUrl) {
-          console.log('🔍 Searching Deezer for:', track.title, 'by', track.artist);
-          trackData = await searchDeezerTrack(track.title, track.artist, apiRequest);
-          
-          if (trackData && trackData.previewUrl) {
-            previewUrl = trackData.previewUrl;
-            source = 'deezer';
-            deezerCacheRef.current.set(cacheKey, trackData);
-            console.log('✅ Found Deezer preview for:', track.title);
-          }
+        } catch (e) {
+          console.log('❌ Spotify preview not accessible:', e.message);
         }
       }
       
       if (!previewUrl) {
-        console.log('❌ No preview URL available for:', track.title);
-        failedSearchesRef.current.add(cacheKey);
-        setTimeout(() => {
-          failedSearchesRef.current.delete(cacheKey);
-        }, 5 * 60 * 1000);
-        setPreviewLoadingTrack(null);
-        return false;
-      }
-      
-      console.log(`🎯 Loading preview URL: ${previewUrl.substring(0, 80)}...`);
-      
-      // Set up the audio source
-      audio.src = previewUrl;
-      audio.volume = previewVolume;
-      audio.preload = 'auto';
-
-      // Enhanced loading promise with better event handling
-      const audioLoadPromise = new Promise((resolve, reject) => {
-        let resolved = false;
-        const cleanup = () => {
-          audio.removeEventListener('canplaythrough', onCanPlayThrough);
-          audio.removeEventListener('canplay', onCanPlay);
-          audio.removeEventListener('error', onError);
-          audio.removeEventListener('loadeddata', onLoadedData);
-        };
+        console.log('🔍 Searching Deezer for:', track.title, 'by', track.artist);
+        trackData = await searchDeezerTrack(track.title, track.artist, apiRequest);
         
-        const onCanPlayThrough = () => {
-          if (resolved) return;
-          resolved = true;
-          console.log('✅ Audio can play through, resolving');
-          cleanup(); 
-          resolve('canplaythrough');
-        };
-        
-        const onCanPlay = () => {
-          if (resolved) return;
-          resolved = true;
-          console.log('✅ Audio can play, resolving');
-          cleanup(); 
-          resolve('canplay');
-        };
-        
-        const onLoadedData = () => {
-          if (resolved) return;
-          resolved = true;
-          console.log('✅ Audio loaded data, resolving');
-          cleanup(); 
-          resolve('loadeddata');
-        };
-        
-        const onError = (e) => {
-          if (resolved) return;
-          resolved = true;
-          console.error('❌ Audio load error:', e.target?.error || e);
-          cleanup(); 
-          reject(new Error(`Audio load failed: ${e.target?.error?.message || 'Unknown error'}`));
-        };
-        
-        audio.addEventListener('canplaythrough', onCanPlayThrough, { once: true });
-        audio.addEventListener('canplay', onCanPlay, { once: true });
-        audio.addEventListener('loadeddata', onLoadedData, { once: true });
-        audio.addEventListener('error', onError, { once: true });
-        audio.load();
-        
-        // Timeout
-        setTimeout(() => {
-          if (resolved) return;
-          resolved = true;
-          cleanup();
-          reject(new Error('Audio load timeout'));
-        }, 10000);
-      });
-      
-      console.log('⏳ Waiting for audio to load...');
-      const loadResult = await audioLoadPromise;
-      
-      // Check if track changed while loading
-      if (previewCurrentTrackId !== track.trackId) {
-        console.log('⏭️ Track changed while loading, skipping play');
-        return false;
-      }
-      
-      // FIXED: Always attempt to play when userInitiated is true
-      if (userInitiated) {
-        try {
-          console.log('▶️ User initiated - starting playback...');
-          await audio.play();
-          setPreviewIsPlaying(true);
-          console.log(`✅ Successfully playing preview for: "${track.title}" from ${source}`);
-          return true;
-        } catch (playError) {
-          console.warn('⚠️ Auto-play failed (browser policy?):', playError.message);
-          setPreviewIsPlaying(false);
-          return true; // Still successful load
+        if (trackData && trackData.previewUrl) {
+          previewUrl = trackData.previewUrl;
+          source = 'deezer';
+          deezerCacheRef.current.set(cacheKey, trackData);
+          console.log('✅ Found Deezer preview for:', track.title);
         }
-      } else {
-        console.log('✅ Audio ready, waiting for user action');
-        setPreviewIsPlaying(false);
-        return true;
       }
-        
-    } catch (error) {
-      console.error('💥 Failed to play preview:', error.message);
-      setPreviewIsPlaying(false);
-      setPreviewLoadingTrack(null);
-      
-      if (deezerCacheRef.current.has(cacheKey)) {
-        console.log('🗑️ Removing failed preview from cache');
-        deezerCacheRef.current.delete(cacheKey);
-      }
-      
+    }
+    
+    if (!previewUrl) {
+      console.log('❌ No preview URL available for:', track.title);
       failedSearchesRef.current.add(cacheKey);
       setTimeout(() => {
         failedSearchesRef.current.delete(cacheKey);
-      }, 2 * 60 * 1000);
-      
+      }, 5 * 60 * 1000);
+      setPreviewLoadingTrack(null);
       return false;
-    } finally {
-      setTimeout(() => {
-        isChangingTracks.current = false;
-        setPreviewLoadingTrack(null);
-      }, 300);
     }
-  }, [playableTracks, previewVolume, apiRequest, previewCurrentTrackId, previewMode]);
+    
+    console.log(`🎯 Loading preview URL: ${previewUrl.substring(0, 80)}...`);
+    
+    // Set up the audio source
+    audio.src = previewUrl;
+    audio.volume = previewVolume;
+    audio.preload = 'auto';
+
+    // Enhanced loading promise with better event handling
+    const audioLoadPromise = new Promise((resolve, reject) => {
+      let resolved = false;
+      const cleanup = () => {
+        audio.removeEventListener('canplaythrough', onCanPlayThrough);
+        audio.removeEventListener('canplay', onCanPlay);
+        audio.removeEventListener('error', onError);
+        audio.removeEventListener('loadeddata', onLoadedData);
+      };
+      
+      const onCanPlayThrough = () => {
+        if (resolved) return;
+        resolved = true;
+        console.log('✅ Audio can play through, resolving');
+        cleanup(); 
+        resolve('canplaythrough');
+      };
+      
+      const onCanPlay = () => {
+        if (resolved) return;
+        resolved = true;
+        console.log('✅ Audio can play, resolving');
+        cleanup(); 
+        resolve('canplay');
+      };
+      
+      const onLoadedData = () => {
+        if (resolved) return;
+        resolved = true;
+        console.log('✅ Audio loaded data, resolving');
+        cleanup(); 
+        resolve('loadeddata');
+      };
+      
+      const onError = (e) => {
+        if (resolved) return;
+        resolved = true;
+        console.error('❌ Audio load error:', e.target?.error || e);
+        cleanup(); 
+        reject(new Error(`Audio load failed: ${e.target?.error?.message || 'Unknown error'}`));
+      };
+      
+      audio.addEventListener('canplaythrough', onCanPlayThrough, { once: true });
+      audio.addEventListener('canplay', onCanPlay, { once: true });
+      audio.addEventListener('loadeddata', onLoadedData, { once: true });
+      audio.addEventListener('error', onError, { once: true });
+      audio.load();
+      
+      // Timeout
+      setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        reject(new Error('Audio load timeout'));
+      }, 10000);
+    });
+    
+    console.log('⏳ Waiting for audio to load...');
+    await audioLoadPromise;
+    
+    // Check if track changed while loading
+    if (previewCurrentTrackId !== track.trackId) {
+      console.log('⏭️ Track changed while loading, skipping play');
+      return false;
+    }
+    
+    // FIXED: Always attempt to play when userInitiated is true
+    if (userInitiated) {
+      try {
+        console.log('▶️ User initiated - starting playback...');
+        await audio.play();
+        setPreviewIsPlaying(true);
+        console.log(`✅ Successfully playing preview for: "${track.title}" from ${source}`);
+        return true;
+      } catch (playError) {
+        console.warn('⚠️ Auto-play failed (browser policy?):', playError.message);
+        setPreviewIsPlaying(false);
+        return true; // Still successful load
+      }
+    } else {
+      console.log('✅ Audio ready, waiting for user action');
+      setPreviewIsPlaying(false);
+      return true;
+    }
+      
+  } catch (error) {
+    console.error('💥 Failed to play preview:', error.message);
+    setPreviewIsPlaying(false);
+    setPreviewLoadingTrack(null);
+    
+    if (deezerCacheRef.current.has(cacheKey)) {
+      console.log('🗑️ Removing failed preview from cache');
+      deezerCacheRef.current.delete(cacheKey);
+    }
+    
+    failedSearchesRef.current.add(cacheKey);
+    setTimeout(() => {
+      failedSearchesRef.current.delete(cacheKey);
+    }, 2 * 60 * 1000);
+    
+    return false;
+  } finally {
+    setTimeout(() => {
+      isChangingTracks.current = false;
+      setPreviewLoadingTrack(null);
+    }, 300);
+  }
+}, [playableTracks, previewVolume, apiRequest, previewCurrentTrackId]);
 
   const pausePreview = useCallback(() => {
     if (audioRef.current) {
@@ -610,8 +611,8 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   }, [spotifyReady, spotifyActive, activateAudio, transferPlayback, playableTracks, playSpotifyTrack]);
 
   /* ----------------- unified transport controls (user-gesture aware) ----------------- */
-  const play = useCallback(async (trackIndex = null, userInitiated = false) => {
-  console.log(`🎯 play() called with trackIndex: ${trackIndex}, previewMode: ${previewMode}, userInitiated: ${userInitiated}`);
+const play = useCallback(async (playableTrackIndex = null, userInitiated = false) => {
+  console.log(`🎯 play() called with playableTrackIndex: ${playableTrackIndex}, previewMode: ${previewMode}, userInitiated: ${userInitiated}`);
   
   if (!playableTracks.length || isChangingTracks.current) {
     console.log('❌ Cannot play - no tracks or already changing');
@@ -621,8 +622,8 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   if (previewMode) {
     if (userInitiated) await ensureAudioUnlocked();
     
-    // FIXED: When trackIndex is null, use current queue to get the track index
-    if (trackIndex === null) {
+    // When no specific track requested, use current queue position
+    if (playableTrackIndex === null) {
       if (currentTrack && !previewIsPlaying && audioRef.current?.src) {
         const currentPlayableIndex = playQueue[currentQueueIndex];
         const currentPlayableTrack = playableTracks[currentPlayableIndex];
@@ -633,12 +634,13 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
           return await resumePreview();
         }
       }
-      // Get track index from current queue position
-      trackIndex = playQueue[currentQueueIndex];
+      // Get the playable track index from current queue position
+      playableTrackIndex = playQueue[currentQueueIndex];
+      console.log(`🎵 No specific track requested, using current queue position ${currentQueueIndex} -> playable track ${playableTrackIndex}`);
     }
     
-    console.log(`🎵 Playing preview track at index: ${trackIndex}`);
-    const success = await playPreviewTrack(trackIndex, { userInitiated });
+    console.log(`🎵 Playing preview for playable track ${playableTrackIndex}: ${playableTracks[playableTrackIndex]?.title}`);
+    const success = await playPreviewTrack(playableTrackIndex, { userInitiated });
     
     if (!success && userInitiated && playQueue.length > 1) {
       console.log('🔄 First track failed, trying next...');
@@ -653,11 +655,11 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     // Spotify mode logic (unchanged)
     isChangingTracks.current = true;
     try {
-      if (trackIndex === null && currentTrack && !isPlaying) {
+      if (playableTrackIndex === null && currentTrack && !isPlaying) {
         await toggleSpotifyPlay();
         return true;
       }
-      const targetIndex = trackIndex !== null ? trackIndex : playQueue[currentQueueIndex];
+      const targetIndex = playableTrackIndex !== null ? playableTrackIndex : playQueue[currentQueueIndex];
       return await ensureSpotifyReady(targetIndex);
     } finally {
       setTimeout(() => { isChangingTracks.current = false; }, 500);
@@ -699,26 +701,28 @@ const next = useCallback(async (userInitiated = false) => {
   }
   if (playQueue.length === 1) {
     console.log('🔄 Only one track in queue, restarting');
-    const trackIndex = playQueue[0];
-    await play(trackIndex, userInitiated);
+    const playableTrackIndex = playQueue[0];
+    await play(playableTrackIndex, userInitiated);
     return;
   }
   
   const nextQueueIdx = currentQueueIndex + 1;
   if (nextQueueIdx < playQueue.length) {
-    console.log(`⏭️ Going to next track at queue position: ${nextQueueIdx}`);
+    console.log(`⏭️ Moving to queue position ${nextQueueIdx}`);
     setCurrentQueueIndex(nextQueueIdx);
     await new Promise(resolve => setTimeout(resolve, 50));
-    const trackIndex = playQueue[nextQueueIdx]; // Get actual track index from queue
-    await play(trackIndex, userInitiated);
+    const playableTrackIndex = playQueue[nextQueueIdx];
+    console.log(`⏭️ Playing playable track ${playableTrackIndex}: ${playableTracks[playableTrackIndex]?.title}`);
+    await play(playableTrackIndex, userInitiated);
   } else {
     console.log('🔄 End of queue, restarting from beginning');
     setCurrentQueueIndex(0);
     await new Promise(resolve => setTimeout(resolve, 50));
-    const trackIndex = playQueue[0];
-    await play(trackIndex, userInitiated);
+    const playableTrackIndex = playQueue[0];
+    console.log(`⏭️ Playing first track ${playableTrackIndex}: ${playableTracks[playableTrackIndex]?.title}`);
+    await play(playableTrackIndex, userInitiated);
   }
-}, [playableTracks.length, playQueue, currentQueueIndex, play]);
+}, [playableTracks, playQueue, currentQueueIndex, play]);
 
 
 const previous = useCallback(async (userInitiated = false) => {
@@ -730,20 +734,22 @@ const previous = useCallback(async (userInitiated = false) => {
   
   const prevQueueIdx = currentQueueIndex - 1;
   if (prevQueueIdx >= 0) {
-    console.log(`⏮️ Going to previous track at queue position: ${prevQueueIdx}`);
+    console.log(`⏮️ Moving to queue position ${prevQueueIdx}`);
     setCurrentQueueIndex(prevQueueIdx);
     await new Promise(resolve => setTimeout(resolve, 50));
-    const trackIndex = playQueue[prevQueueIdx]; // Get actual track index from queue
-    await play(trackIndex, userInitiated);
+    const playableTrackIndex = playQueue[prevQueueIdx];
+    console.log(`⏮️ Playing playable track ${playableTrackIndex}: ${playableTracks[playableTrackIndex]?.title}`);
+    await play(playableTrackIndex, userInitiated);
   } else {
     console.log('🔄 At beginning, going to end of queue');
     const lastQueueIdx = playQueue.length - 1;
     setCurrentQueueIndex(lastQueueIdx);
     await new Promise(resolve => setTimeout(resolve, 50));
-    const trackIndex = playQueue[lastQueueIdx];
-    await play(trackIndex, userInitiated);
+    const playableTrackIndex = playQueue[lastQueueIdx];
+    console.log(`⏮️ Playing last track ${playableTrackIndex}: ${playableTracks[lastQueueIdx]?.title}`);
+    await play(playableTrackIndex, userInitiated);
   }
-}, [playableTracks.length, playQueue, currentQueueIndex, play]);
+}, [playableTracks, playQueue, currentQueueIndex, play]);
 
 
 
@@ -779,29 +785,29 @@ const playAll = useCallback(async () => {
   let q;
   if (shuffleMode) {
     q = createWeightedShuffle();
-    setPlayQueue(q);
   } else {
     q = [...originalQueue];
-    setPlayQueue(q);
   }
   
-  console.log(`🎵 Setting up queue with first track: ${q[0]}`);
+  console.log(`🎵 Setting up queue:`, q.map(i => playableTracks[i]?.title));
+  setPlayQueue(q);
   setCurrentQueueIndex(0);
   
-  // FIXED: Wait for state updates, then play the actual track index (not queue index)
+  // Wait for state updates, then play the first track
   await new Promise(resolve => setTimeout(resolve, 50));
-  const firstTrackIndex = q[0]; // This is the actual track index in playableTracks
-  const success = await play(firstTrackIndex, true); // Play the track index, not queue index
+  const firstPlayableTrackIndex = q[0];
+  console.log(`🎵 Playing first track ${firstPlayableTrackIndex}: ${playableTracks[firstPlayableTrackIndex]?.title}`);
+  
+  const success = await play(firstPlayableTrackIndex, true);
   
   if (!success && q.length > 1) {
     console.log('❌ First track failed, trying next...');
     setCurrentQueueIndex(1);
-    await new Promise(resolve => setTimeout(resolve, 10));
-    const secondTrackIndex = q[1];
-    await play(secondTrackIndex, true);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const secondPlayableTrackIndex = q[1];
+    await play(secondPlayableTrackIndex, true);
   }
-}, [playableTracks.length, shuffleMode, createWeightedShuffle, originalQueue, play, previewMode]);
-
+}, [playableTracks, shuffleMode, createWeightedShuffle, originalQueue, play, previewMode]);
 // Seek function
 const seek = useCallback(async (ms) => {
   userActionRef.current.soughtAt = Date.now();
@@ -867,31 +873,36 @@ const getPlayableTrackIndex = useCallback((originalTrackIndex) => {
 }, [tracks, playableTracks, previewMode]);
 
 const playTrackByOriginalIndex = useCallback(async (originalTrackIndex) => {
-  console.log(`🎯 playTrackByOriginalIndex(${originalTrackIndex})`);
+  console.log(`🎯 playTrackByOriginalIndex(${originalTrackIndex}) - Original track: ${tracks[originalTrackIndex]?.title}`);
+  
+  // Convert original track index to playable track index
   const playableTrackIdx = getPlayableTrackIndex(originalTrackIndex);
   if (playableTrackIdx < 0) {
     console.log('❌ Track not playable:', tracks[originalTrackIndex]?.title || 'Unknown');
     return;
   }
   
-  // FIXED: Find the queue index for this playable track index
+  console.log(`🎯 Converted to playable index: ${playableTrackIdx} - Track: ${playableTracks[playableTrackIdx]?.title}`);
+  
+  // Find this playable track in the current queue
   const queueIdx = playQueue.findIndex(i => i === playableTrackIdx);
   if (queueIdx >= 0) {
-    console.log(`🎯 Found track at queue index ${queueIdx}, playable track index ${playableTrackIdx}`);
+    console.log(`🎯 Found in queue at position ${queueIdx}`);
     setCurrentQueueIndex(queueIdx);
     await new Promise(resolve => setTimeout(resolve, 50));
-    // Play the actual playable track index, not the queue index
+    // Now play using the playable track index
     await play(playableTrackIdx, true);
   } else {
-    console.log('❌ Track not found in current queue, adding to front');
-    // If track not in current queue, add it to the front and play
-    const newQueue = [playableTrackIdx, ...playQueue.filter(i => i !== playableTrackIdx)];
+    console.log('❌ Track not in current queue, rebuilding queue with this track first');
+    // Rebuild queue with this track first
+    const otherTracks = originalQueue.filter(i => i !== playableTrackIdx);
+    const newQueue = [playableTrackIdx, ...otherTracks];
     setPlayQueue(newQueue);
     setCurrentQueueIndex(0);
     await new Promise(resolve => setTimeout(resolve, 50));
     await play(playableTrackIdx, true);
   }
-}, [getPlayableTrackIndex, play, playQueue, tracks]);
+}, [getPlayableTrackIndex, play, playQueue, tracks, playableTracks, originalQueue]);
 
 const playTrackFromQueue = useCallback(async (queueIndex) => {
   console.log(`🎯 playTrackFromQueue(${queueIndex})`);
