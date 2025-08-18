@@ -1,4 +1,4 @@
-// client/src/hooks/usePreviewMusicPlayer.js - Fixed Version with Reliable Deezer Integration
+// client/src/hooks/usePreviewMusicPlayer.js - Fixed Version with Auto-play Issues Resolved
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSpotifyWebPlayback } from './useSpotifyWebPlayback.js';
 
@@ -184,11 +184,14 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
       });
       
       audio.addEventListener('ended', () => {
-        console.log('Preview ended, going to next track');
+        console.log('🔚 Preview ended, auto-advancing to next track');
         setPreviewIsPlaying(false);
         setPreviewPosition(0);
         if (playQueue.length > 1) {
-          setTimeout(() => next(), 200);
+          // FIXED: Auto-advance to next track when preview ends
+          setTimeout(() => {
+            next();
+          }, 200);
         }
       });
       
@@ -247,7 +250,7 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
         }
       }
     };
-  }, [previewMode]);
+  }, [previewMode, currentTrack, playQueue.length]);
 
   /* ----------------- shuffle helper ----------------- */
   const createWeightedShuffle = useCallback((excludeTrackIndex = null) => {
@@ -582,6 +585,7 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     }
   }, [previewMode, pausePreview, spotifyReady, toggleSpotifyPlay]);
 
+  // FIXED: Next function now properly auto-plays in preview mode
   const next = useCallback(async () => {
     console.log('⏭️ next() called');
     if (!playableTracks.length || !playQueue.length || isChangingTracks.current) {
@@ -590,6 +594,11 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     }
     if (playQueue.length === 1) {
       console.log('🔄 Only one track in queue, restarting');
+      // FIXED: Auto-play when restarting single track
+      if (previewMode) {
+        setCurrentQueueIndex(0);
+        return await playPreviewTrack(playQueue[0]);
+      }
       return;
     }
     
@@ -597,14 +606,17 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     if (nextIdx < playQueue.length) {
       console.log(`⏭️ Going to next track: ${nextIdx}`);
       setCurrentQueueIndex(nextIdx);
-      await play(playQueue[nextIdx]);
+      // FIXED: Always auto-play the next track
+      return await play(playQueue[nextIdx]);
     } else {
       console.log('🔄 End of queue, restarting from beginning');
       setCurrentQueueIndex(0);
-      await play(playQueue[0]);
+      // FIXED: Always auto-play when restarting from beginning
+      return await play(playQueue[0]);
     }
-  }, [playableTracks.length, playQueue, currentQueueIndex, play]);
+  }, [playableTracks.length, playQueue, currentQueueIndex, play, previewMode, playPreviewTrack]);
 
+  // FIXED: Previous function now properly auto-plays in preview mode
   const previous = useCallback(async () => {
     console.log('⏮️ previous() called');
     if (!playableTracks.length || !playQueue.length || isChangingTracks.current) {
@@ -616,12 +628,14 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     if (prevIdx >= 0) {
       console.log(`⏮️ Going to previous track: ${prevIdx}`);
       setCurrentQueueIndex(prevIdx);
-      await play(playQueue[prevIdx]);
+      // FIXED: Always auto-play the previous track
+      return await play(playQueue[prevIdx]);
     } else {
       console.log('🔄 At beginning, going to end');
       const lastIdx = playQueue.length - 1;
       setCurrentQueueIndex(lastIdx);
-      await play(playQueue[lastIdx]);
+      // FIXED: Always auto-play when going to end
+      return await play(playQueue[lastIdx]);
     }
   }, [playableTracks.length, playQueue, currentQueueIndex, play]);
 
@@ -647,6 +661,7 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     }
   }, [shuffleMode, createWeightedShuffle, originalQueue, playQueue, currentQueueIndex]);
 
+  // FIXED: playAll function now properly auto-plays in preview mode
   const playAll = useCallback(async () => {
     console.log(`🎵 playAll() called, previewMode: ${previewMode}`);
     if (!playableTracks.length) {
@@ -666,17 +681,29 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     console.log(`🎵 Playing first track in queue: ${first}`);
     setCurrentQueueIndex(0);
     
-    // Force play the first track
-    const success = await play(first);
-    if (!success) {
-      console.log('❌ Failed to play first track, trying next...');
-      // Try the next track if the first one fails
-      if (q.length > 1) {
+    // FIXED: Always force play the first track in preview mode
+    if (previewMode) {
+      const success = await playPreviewTrack(first);
+      if (!success && q.length > 1) {
+        console.log('❌ Failed to play first track, trying next...');
         setCurrentQueueIndex(1);
-        await play(q[1]);
+        return await playPreviewTrack(q[1]);
       }
+      return success;
+    } else {
+      // Spotify mode
+      const success = await play(first);
+      if (!success) {
+        console.log('❌ Failed to play first track, trying next...');
+        // Try the next track if the first one fails
+        if (q.length > 1) {
+          setCurrentQueueIndex(1);
+          return await play(q[1]);
+        }
+      }
+      return success;
     }
-  }, [playableTracks.length, shuffleMode, createWeightedShuffle, originalQueue, play]);
+  }, [playableTracks.length, shuffleMode, createWeightedShuffle, originalQueue, previewMode, playPreviewTrack, play]);
 
   // Seek function - handles both preview and Spotify
   const seek = useCallback(async (ms) => {

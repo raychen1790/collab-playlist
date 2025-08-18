@@ -1,9 +1,9 @@
-// client/src/components/TrackRow.jsx - Enhanced with Preview Mode support
+// client/src/components/TrackRow.jsx - FIXED: Enhanced with proper Preview Mode support
 import VoteButtons from './VoteButtons.jsx';
-import { Play, Pause, Music, Zap, Activity, Volume2 } from 'lucide-react';
+import { Play, Pause, Music, Zap, Activity, Volume2, Loader } from 'lucide-react';
 
 /**
- * Ultra-enhanced TrackRow with liquid animations, 3D effects, and preview mode support
+ * Ultra-enhanced TrackRow with liquid animations, 3D effects, and FIXED preview mode support
  */
 export default function TrackRow({
   roomId,
@@ -14,6 +14,7 @@ export default function TrackRow({
   position,
   isPlaying,
   isCurrentTrack,
+  isLoading = false, // NEW: loading state for preview searches
   onPlay,
   onPause,
   trackIndex,
@@ -40,19 +41,27 @@ export default function TrackRow({
     }
   };
 
-  // Updated playability logic to handle both modes
-  const isPlayable = previewMode ? !!previewUrl : !!spotifyId;
-  const canPlay = previewMode ? isPlayable : (isPlayable && spotifyReady && spotifyActive);
+  // FIXED: Updated playability logic for both modes
+  const isPlayable = previewMode 
+    ? !!(title && artist) // In preview mode, any track with title/artist is potentially playable
+    : !!spotifyId; // In Spotify mode, need Spotify ID
+
+  // FIXED: Updated canPlay logic to account for loading states
+  const canPlay = previewMode 
+    ? isPlayable && !isLoading // In preview mode, playable if has title/artist and not currently loading
+    : (isPlayable && spotifyReady && spotifyActive); // Spotify mode unchanged
 
   const getPlayButtonIcon = () => {
+    if (isLoading) return <Loader size={16} className="animate-spin" />; // NEW: Show loading spinner
     if (!isPlayable) return <Music size={16} />;
     if (isCurrentTrack && isPlaying) return <Pause size={16} />;
     return <Play size={16} />;
   };
 
   const getPlayButtonTitle = () => {
+    if (isLoading) return previewMode ? 'Searching for preview...' : 'Loading...';
     if (!isPlayable) {
-      return previewMode ? 'No preview available' : 'No Spotify ID available';
+      return previewMode ? 'No title/artist for preview search' : 'No Spotify ID available';
     }
     if (!previewMode && !spotifyReady) return 'Connecting to Spotify...';
     if (!previewMode && !spotifyActive) return 'Activate Spotify playback first';
@@ -98,23 +107,30 @@ export default function TrackRow({
         )}
       </div>
 
-      {/* Enhanced play/pause button with liquid effect and preview indicator */}
+      {/* FIXED: Enhanced play/pause button with loading state and better preview indicator */}
       <button
         onClick={handlePlayPauseClick}
-        disabled={!canPlay}
+        disabled={!canPlay && !isLoading} // Allow clicking while loading in case user wants to cancel/retry
         className={`play-btn btn-liquid relative ${
-          canPlay 
-            ? `${isCurrentTrack && isPlaying ? 'playing' : ''}` 
+          canPlay || isLoading
+            ? `${isCurrentTrack && isPlaying ? 'playing' : ''} ${isLoading ? 'loading' : ''}` 
             : 'opacity-30 cursor-not-allowed'
         }`}
         title={getPlayButtonTitle()}
       >
         {getPlayButtonIcon()}
         
-        {/* Preview mode indicator */}
-        {previewMode && isPlayable && (
+        {/* Preview mode indicator - UPDATED to show for all playable tracks in preview mode */}
+        {previewMode && isPlayable && !isLoading && (
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-blue-300 to-purple-300 rounded-full border border-white/50">
             <Volume2 size={8} className="text-white p-0.5" />
+          </div>
+        )}
+        
+        {/* Loading indicator */}
+        {isLoading && (
+          <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-orange-300 to-yellow-300 rounded-full border border-white/50 animate-pulse">
+            <Loader size={8} className="text-white p-0.5 animate-spin" />
           </div>
         )}
         
@@ -150,9 +166,16 @@ export default function TrackRow({
         </div>
         
         {/* Play overlay with liquid effect */}
-        {canPlay && !isCurrentTrack && (
+        {canPlay && !isCurrentTrack && !isLoading && (
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-xl opacity-0 group-hover/album:opacity-100 transition-all duration-300 flex items-center justify-center">
             <Play size={16} className="text-white drop-shadow-lg" />
+          </div>
+        )}
+
+        {/* Loading overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-xl flex items-center justify-center">
+            <Loader size={16} className="text-white drop-shadow-lg animate-spin" />
           </div>
         )}
       </div>
@@ -181,18 +204,32 @@ export default function TrackRow({
             </span>
           </div>
         )}
-        {!isPlayable && (
+        
+        {/* Loading indicator */}
+        {isLoading && (
           <div className="flex items-center gap-1 mt-1">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-            <span className="text-xs text-yellow-300 font-main">
-              {previewMode ? 'No Preview' : 'No Spotify ID'}
+            <Loader size={12} className="text-orange-400 animate-spin" />
+            <span className="text-xs text-orange-300 font-main">
+              Searching for preview...
             </span>
           </div>
         )}
-        {previewMode && isPlayable && (
+        
+        {/* Not playable indicators */}
+        {!isPlayable && !isLoading && (
+          <div className="flex items-center gap-1 mt-1">
+            <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+            <span className="text-xs text-yellow-300 font-main">
+              {previewMode ? 'Missing title/artist' : 'No Spotify ID'}
+            </span>
+          </div>
+        )}
+        
+        {/* Preview available indicator */}
+        {previewMode && isPlayable && !isLoading && !isCurrentTrack && (
           <div className="flex items-center gap-1 mt-1">
             <Volume2 size={12} className="text-blue-300" />
-            <span className="text-xs text-blue-300 font-main">30s preview</span>
+            <span className="text-xs text-blue-300 font-main">Preview search available</span>
           </div>
         )}
       </div>
