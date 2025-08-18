@@ -963,3 +963,42 @@ body::before {
     --glass-border: rgba(255,255,255,0.12);
   }
 }
+
+.glass-card::before,
+.btn-primary::before,
+.btn-sort::before,
+.track-row-compact::before {
+  left: auto !important;
+  transform: translateX(-120%);
+  transition: transform 0.5s linear !important;
+  will-change: transform;
+}
+.glass-card:hover::before,
+.btn-primary:hover::before,
+.btn-sort:hover::before,
+.track-row-compact:hover::before {
+  transform: translateX(120%);
+}
+
+:where(.glass-card,
+       .btn-primary,
+       .btn-secondary,
+       .btn-sort,
+       .track-row-compact,
+       .play-btn) {
+  transition-property: transform, box-shadow, opacity, color, background-color, border-color !important;
+  backface-visibility: hidden;      
+  contain: paint;                    
+  will-change: transform;          
+}
+
+.glass-card:hover { transform: translateY(-6px) scale(1.015); } 
+
+.animate-gradient-shift { animation-duration: 45s !important; } /* was 15s */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-gradient-shift,
+  .animate-particle-float,
+  .text-gradient-animated,
+  .btn-sort::after { animation: none !important; }
+}
