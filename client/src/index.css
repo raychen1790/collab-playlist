@@ -975,3 +975,30 @@ body:has(.glass-card:hover) .bg-gradient-animated {
   10%  { opacity: 1; }
   100% { transform: translateX(120%);  opacity: 0; }
 }
+
+.glass-card { 
+  box-shadow: 0 16px 40px rgba(31,38,135,.22), inset 0 1px 0 rgba(255,255,255,.35) !important;
+  position: relative;
+  overflow: clip; 
+}
+
+.glass-card::after {
+  content: '';
+  position: absolute; inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: 0 22px 52px rgba(31,38,135,.28); /* the "hover" shadow look */
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.glass-card:hover::after { opacity: 1; }
+
+.glass-card::before { animation: none !important; opacity: 0; }
+.glass-card:hover::before { 
+  animation: cardSheen 600ms linear 1; 
+}
+@keyframes cardSheen {
+  0%   { transform: translateX(-120%); opacity: 0; }
+  10%  { opacity: 1; }
+  100% { transform: translateX(120%);  opacity: 0; }
+}
