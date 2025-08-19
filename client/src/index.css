@@ -947,7 +947,7 @@ body::before {
 
 .glass-card:hover { transform: translateY(-6px) scale(1.015); } 
 
-.animate-gradient-shift { animation-duration: 45s !important; } /* was 15s */
+.animate-gradient-shift { animation-duration: 45s !important; } 
 
 @media (prefers-reduced-motion: reduce) {
   .animate-gradient-shift,
@@ -956,44 +956,22 @@ body::before {
   .btn-sort::after { animation: none !important; }
 }
 
-.glass-card::before,
-.track-row-compact::before,
-.btn-primary::before,
-.btn-sort::before,
-.play-btn::before {
-  left: auto !important;                 
-  transform: translate3d(-120%,0,0);     
-  transition: transform 480ms linear !important;
-  will-change: transform;                 
-  pointer-events: none;                   
+body:has(.glass-card:hover) .bg-gradient-animated { 
+  animation-play-state: paused !important; 
 }
 
-.glass-card:hover::before,
-.track-row-compact:hover::before,
-.btn-primary:hover::before,
-.btn-sort:hover::before,
-.play-btn:hover::before {
-  transform: translate3d(120%,0,0);
+.glass-card {
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  background: rgba(255,255,255,0.28) !important;
 }
 
-:root { --shimmer-core: 50%; } 
-.glass-card::before,
-.track-row-compact::before,
-.btn-primary::before,
-.btn-sort::before,
-.play-btn::before {
-
-  background: linear-gradient(
-    90deg,
-    transparent calc(var(--shimmer-core) - 8%),
-    rgba(255,255,255,0.28) var(--shimmer-core),
-    transparent calc(var(--shimmer-core) + 8%)
-  ) !important;
+.glass-card::before { animation: none !important; opacity: 0; }
+.glass-card:hover::before { 
+  animation: cardSheen 600ms linear 1; 
 }
-
-
-.glass-card,
-.track-row-compact {
-  contain: paint;                 
-  backface-visibility: hidden;    
+@keyframes cardSheen {
+  0%   { transform: translateX(-120%); opacity: 0; }
+  10%  { opacity: 1; }
+  100% { transform: translateX(120%);  opacity: 0; }
 }
