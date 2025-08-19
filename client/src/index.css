@@ -1,31 +1,23 @@
-/* Enhanced CSS compatible with Tailwind CSS v4 */
 
-/* Import Tailwind */
 @import "tailwindcss";
 
-/* Import fonts */
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&family=Nunito:wght@300;400;500;600;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&display=swap');
 
-/* CSS Variables for Dynamic Theming */
 :root {
-  /* Dynamic color palette with sophisticated gradients */
   --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
   --accent-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 50%, #667eea 100%);
   --warm-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 50%, #f093fb 100%);
   --cool-gradient: linear-gradient(135deg, #a8edea 0%, #fed6e3 50%, #d299c2 100%);
   
-  /* Animated background gradients */
   --bg-animated: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #4facfe);
   
-  /* Advanced glassmorphism */
   --glass-strong: rgba(255,255,255,0.25);
   --glass-medium: rgba(255,255,255,0.14);
   --glass-light:  rgba(255,255,255,0.08);
   --glass-border: rgba(255,255,255,0.18);
   --glass-shadow: 0 20px 50px rgba(31, 38, 135, 0.25);
   
-  /* Neon accents */
   --neon-blue: #00d4ff;
   --neon-pink: #ff006e;
   --neon-green: #00ff88;
@@ -57,7 +49,6 @@ body {
   100% { background-position: 0% 50%; }
 }
 
-/* Dynamic particles background overlay */
 body::before {
   content: '';
   position: fixed;
@@ -80,7 +71,6 @@ body::before {
   100% { transform: translateY(-20px) rotate(360deg); }
 }
 
-/* Next-Level Glassmorphism Cards */
 .glass-card {
   background: var(--glass-medium);
   backdrop-filter: blur(25px) saturate(200%);
@@ -120,7 +110,6 @@ body::before {
   border-color: rgba(255, 255, 255, 0.5);
 }
 
-/* Morphing Buttons with Advanced Effects */
 .btn-primary {
   background: var(--primary-gradient);
   color: white;
@@ -172,7 +161,6 @@ body::before {
   transition: transform 0.1s;
 }
 
-/* Secondary Button Style */
 .btn-secondary {
   padding: 12px 24px;
   border-radius: 16px;
@@ -201,7 +189,6 @@ body::before {
   transform: translateY(0) scale(1);
 }
 
-/* 3D Card Hover Effects */
 .card-3d {
   transform-style: preserve-3d;
   transition: transform 0.6s cubic-bezier(0.23, 1, 0.320, 1);
@@ -211,7 +198,6 @@ body::before {
   transform: rotateX(5deg) rotateY(10deg) scale3d(1.05, 1.05, 1.05);
 }
 
-/* Liquid Button Effects */
 .btn-liquid {
   position: relative;
   overflow: hidden;
@@ -245,7 +231,6 @@ body::before {
   border-radius: 60px;
 }
 
-/* Morphing Sort Buttons */
 .btn-sort {
   padding: 12px 24px;
   border-radius: 16px;
@@ -314,7 +299,6 @@ body::before {
   100% { transform: translateX(100%); }
 }
 
-/* Advanced Track Row Hover */
 .track-row-compact {
   transition: all 0.3s ease-out;
   position: relative;
@@ -382,7 +366,6 @@ body::before {
   box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
 }
 
-/* Enhanced Vote Buttons */
 .vote-btn {
   width: 32px;
   height: 32px;
@@ -457,7 +440,6 @@ body::before {
   transform: translateY(-2px) scale(1.1);
 }
 
-/* Floating Animation */
 .floating-element {
   animation: floatPulse 3s ease-in-out infinite;
 }
@@ -472,7 +454,6 @@ body::before {
   50% { transform: translateY(-5px) scale(1.05); }
 }
 
-/* Text Gradients */
 .text-gradient {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
@@ -489,7 +470,6 @@ body::before {
   animation: gradientShift 15s ease infinite;
 }
 
-/* Enhanced Progress Bars */
 .progress-bar {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 10px;
@@ -525,7 +505,6 @@ body::before {
   100% { transform: translateX(100%); }
 }
 
-/* Loading States */
 .loading-spinner {
   width: 40px;
   height: 40px;
@@ -599,7 +578,6 @@ body::before {
   50% { filter: drop-shadow(0 0 20px rgba(102, 126, 234, 0.6)); }
 }
 
-/* Track count styling */
 .track-count {
   color: rgba(255, 255, 255, 0.7);
   font-family: 'Nunito', sans-serif;
@@ -612,7 +590,6 @@ body::before {
   background-clip: text;
 }
 
-/* Enhanced Scrollbars */
 ::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -637,7 +614,6 @@ body::before {
   box-shadow: 0 0 15px rgba(102, 126, 234, 0.4);
 }
 
-/* Notification/Toast Styles */
 .toast-notification {
   background: var(--glass-strong);
   backdrop-filter: blur(25px);
@@ -661,7 +637,6 @@ body::before {
   }
 }
 
-/* Futuristic Input Fields */
 .input-modern {
   background: var(--glass-medium);
   backdrop-filter: blur(15px);
@@ -687,7 +662,6 @@ body::before {
   outline: none;
 }
 
-/* Slow spin animation */
 @keyframes spin-slow {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -697,7 +671,6 @@ body::before {
   animation: spin-slow 3s linear infinite;
 }
 
-/* Gentle floating animation */
 @keyframes float-gentle {
   0%, 100% { transform: translateY(0px) rotate(0deg); }
   33% { transform: translateY(-10px) rotate(1deg); }
@@ -708,7 +681,6 @@ body::before {
   animation: float-gentle 6s ease-in-out infinite;
 }
 
-/* Mobile Responsive Enhancements */
 @media (max-width: 768px) {
   .glass-card {
     border-radius: 20px;
@@ -724,14 +696,13 @@ body::before {
     margin-bottom: 6px;
   }
   
-  /* Mobile-optimized hover effects */
   .track-row-compact:active {
     transform: scale(0.98);
     transition: transform 0.1s;
   }
 }
 
-/* Dark mode enhancements */
+
 @media (prefers-color-scheme: dark) {
   :root {
     --glass-strong: rgba(0, 0, 0, 0.8);
@@ -746,33 +717,26 @@ body::before {
   background-size: 400% 400%;
 }
 
-/* Animation helpers mapped to your existing keyframes */
 .animate-gradient-shift { animation: gradientShift 15s ease infinite; }
 .animate-float-pulse    { animation: floatPulse 3s ease-in-out infinite; }
 .animate-particle-float { animation: particleFloat 20s linear infinite; }
 
-/* Primary gradient background token as a utility */
 .bg-gradient-primary { background: var(--primary-gradient); }
 
-/* Shadow token as a utility */
 .shadow-floating { box-shadow: var(--glass-shadow); }
 
-/* Font utilities to match your JSX names */
 .font-main { font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
 .font-fun  { font-family: 'Fredoka', 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
 
-/* Fonts */
+
 .font-main { font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
 .font-fun  { font-family: 'Fredoka', 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; }
 
-/* Neon shadows for VoteButtons */
 .shadow-neon-green { box-shadow: 0 0 10px var(--neon-green), 0 0 20px rgba(0, 255, 136, 0.5); }
 .shadow-neon-pink  { box-shadow: 0 0 10px var(--neon-pink),  0 0 20px rgba(255, 0, 110, 0.5); }
 
-/* Liquid bounce (you already have @keyframes liquidBounce) */
 .animate-liquid-bounce { animation: liquidBounce 0.6s ease-in-out; }
 
-/* Holographic shine sweeping overlay */
 @keyframes holographicShine {
   0%   { transform: translateX(-120%); opacity: 0; }
   10%  { opacity: 1; }
@@ -781,21 +745,17 @@ body::before {
 }
 .animate-holographic-shine { animation: holographicShine 2.2s linear infinite; }
 
-/* Inputs readable in dark mode */
 @media (prefers-color-scheme: dark) {
-  .input-modern { color: #f1f5f9; } /* slate-100-ish */
+  .input-modern { color: #f1f5f9; } 
 }
 
-/* Snappy variant just for the Home hero features box */
 .glass-card--snappy {
-  /* Only animate the cheap stuff */
   transition: transform 160ms cubic-bezier(.2,.8,.2,1),
               box-shadow 200ms ease;
-  will-change: transform; /* GPU hint */
+  will-change: transform; 
 }
 
 .glass-card--snappy:hover {
-  /* Tiny movement/scale = less reflow, still feels crisp */
   transform: translateY(-2px) scale(1.005);
   box-shadow:
     0 16px 32px rgba(31, 38, 135, 0.22),
@@ -803,16 +763,16 @@ body::before {
 }
 
 /* B. Ensure the animated React background actually shows above body::before */
-body::before { z-index: -20; } /* your AnimatedBackground uses -z-10 */
+body::before { z-index: -20; } 
 
 /* C. Login button white-out fix (Safari/backdrop-filter jank) */
 .btn-primary { isolation: isolate; }
-.btn-primary:hover { filter: none; }            /* remove global brighten wash */
-.btn-primary::before { pointer-events: none; }  /* avoid weird hit-testing */
+.btn-primary:hover { filter: none; }           
+.btn-primary::before { pointer-events: none; } 
 
 /* D. Secondary buttons readable on any surface */
 .btn-secondary {
-  background: linear-gradient(135deg, rgba(31,41,55,0.35), rgba(2,6,23,0.3)); /* slate-ish glass */
+  background: linear-gradient(135deg, rgba(31,41,55,0.35), rgba(2,6,23,0.3)); 
   color: #fff;
   border-color: rgba(255,255,255,0.25);
 }
@@ -828,15 +788,14 @@ body::before { z-index: -20; } /* your AnimatedBackground uses -z-10 */
 
 /* F. Sort buttons (inactive were blending to white) */
 .btn-sort.inactive {
-  background: rgba(17,24,39,0.35);          /* darker glass */
+  background: rgba(17,24,39,0.35);          
   color: rgba(255,255,255,0.9);
-  border-color: rgba(148,163,184,0.35);     /* slate-400-ish */
+  border-color: rgba(148,163,184,0.35);    
 }
 .btn-sort.active {
   background: linear-gradient(135deg, rgba(79,172,254,0.85), rgba(139,92,246,0.85));
 }
 
-/* G. Optional: snappier glass hover for that feature card */
 .glass-card--snappy {
   transition: transform 160ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms ease;
   will-change: transform;
@@ -844,7 +803,6 @@ body::before { z-index: -20; } /* your AnimatedBackground uses -z-10 */
 .glass-card--snappy:hover { transform: translateY(-2px) scale(1.005); }
 .glass-card--snappy::before { transition: left 280ms linear; }
 
-/* --- Background: ensure proper layering --- */
 html, body, #root { 
   height: 100%; 
   margin: 0;
@@ -852,7 +810,6 @@ html, body, #root {
 }
 
 body {
-  /* Fallback gradient in case React component fails to load */
   background: linear-gradient(-45deg, #667eea, #764ba2, #f093fb, #4facfe);
   background-size: 400% 400%;
   animation: gradientShift 15s ease infinite;
@@ -860,18 +817,15 @@ body {
   font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
-/* Remove the old body::before since we're using React component */
 body::before { 
   display: none !important; 
 }
 
-/* Ensure the React AnimatedBackground can overlay properly */
 #root {
   position: relative;
   min-height: 100vh;
 }
 
-/* Fix for input fields - they were inheriting transparent background */
 .input-modern {
   background: rgba(255, 255, 255, 0.9) !important;
   backdrop-filter: blur(15px);
@@ -897,7 +851,6 @@ body::before {
   outline: none;
 }
 
-/* Fix glass cards opacity for better visibility */
 .glass-card {
   background: rgba(255, 255, 255, 0.25) !important;
   backdrop-filter: blur(10px) saturate(200%);
@@ -1001,4 +954,46 @@ body::before {
   .animate-particle-float,
   .text-gradient-animated,
   .btn-sort::after { animation: none !important; }
+}
+
+.glass-card::before,
+.track-row-compact::before,
+.btn-primary::before,
+.btn-sort::before,
+.play-btn::before {
+  left: auto !important;                 
+  transform: translate3d(-120%,0,0);     
+  transition: transform 480ms linear !important;
+  will-change: transform;                 
+  pointer-events: none;                   
+}
+
+.glass-card:hover::before,
+.track-row-compact:hover::before,
+.btn-primary:hover::before,
+.btn-sort:hover::before,
+.play-btn:hover::before {
+  transform: translate3d(120%,0,0);
+}
+
+:root { --shimmer-core: 50%; } 
+.glass-card::before,
+.track-row-compact::before,
+.btn-primary::before,
+.btn-sort::before,
+.play-btn::before {
+
+  background: linear-gradient(
+    90deg,
+    transparent calc(var(--shimmer-core) - 8%),
+    rgba(255,255,255,0.28) var(--shimmer-core),
+    transparent calc(var(--shimmer-core) + 8%)
+  ) !important;
+}
+
+
+.glass-card,
+.track-row-compact {
+  contain: paint;                 
+  backface-visibility: hidden;    
 }
