@@ -32,8 +32,8 @@ export function useMusicPlayer(tracks, sortMode) {
   });
   const ignoreSdkPositionUntilRef = useRef(0);
 
-  const IGNORE_AFTER_USER_ACTION_MS = 1800; // for end-detection
-  const IGNORE_SDK_AFTER_SEEK_MS   = 2200; // ignore stale SDK positions after seek
+  const IGNORE_AFTER_USER_ACTION_MS = 1800; 
+  const IGNORE_SDK_AFTER_SEEK_MS   = 2200; 
   const END_THROTTLE_MS            = 1200;
 
   const {
@@ -50,7 +50,7 @@ export function useMusicPlayer(tracks, sortMode) {
     transferPlayback,
     setVolume,
     seek: sdkSeek,
-    activateAudio, // Safari/iOS activation
+    activateAudio, 
   } = useSpotifyWebPlayback();
 
   /* ----------------- derived lists ----------------- */
@@ -175,7 +175,7 @@ export function useMusicPlayer(tracks, sortMode) {
 
   const next = useCallback(async () => {
     if (!playableTracks.length || !playQueue.length || isChangingTracks.current) return;
-    if (playQueue.length === 1) return; // don't appear to "restart" when only one track
+    if (playQueue.length === 1) return; 
     const nextIdx = currentQueueIndex + 1;
     if (nextIdx < playQueue.length) {
       setCurrentQueueIndex(nextIdx);
@@ -306,8 +306,8 @@ export function useMusicPlayer(tracks, sortMode) {
       smoothBasePosRef.current = sdkPos;
       smoothBaseTimeRef.current = performance.now();
     }
-  }, [playerState?.position, playerState?.duration]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  }, [playerState?.position, playerState?.duration]); 
+  
   // When play/pause toggles, keep the base aligned so RAF continues smoothly
   useEffect(() => {
     smoothBasePosRef.current = positionMs;

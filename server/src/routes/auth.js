@@ -1,4 +1,4 @@
-// server/routes/auth.js - STREAMLINED VERSION with better error handling
+// server/routes/auth.js 
 import express from 'express';
 import axios from 'axios';
 import querystring from 'querystring';
@@ -313,7 +313,7 @@ router.get('/token', async (req, res) => {
       });
     }
     
-    return; // Important: prevent fall-through
+    return; 
   }
   
   // Fall back to cookie-based auth with middleware

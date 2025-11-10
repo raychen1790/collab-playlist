@@ -1,4 +1,4 @@
-// client/src/contexts/AuthContext.jsx - STREAMLINED VERSION
+// client/src/contexts/AuthContext.jsx 
 import { createContext, useState, useEffect, useCallback, useRef } from 'react';
 
 export const AuthContext = createContext();
@@ -250,7 +250,7 @@ export function AuthProvider({ children }) {
   const getTokenFromServer = async () => {
     const cache = tokenRef.current;
     
-    // Return cached token if recent (within 45 minutes)
+    // Return cached token if recent 45 min
     if (cache.current && Date.now() - cache.lastRefresh < 45 * 60 * 1000) {
       return cache.current;
     }
@@ -387,7 +387,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // CRITICAL FIX: Simplified getFreshToken for Web Playback SDK
+  //Simplified getFreshToken for Web Playback SDK
   const getFreshToken = useCallback(async () => {
     try {
       // Always try to get the latest token from server

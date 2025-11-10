@@ -1,11 +1,9 @@
-// Replace your getAudioFeatures.js with this MusicBrainz/AcousticBrainz version
 import { supabase } from './supabaseClient.js';
 import axios from 'axios';
 
 // Helper function to search MusicBrainz for a recording
 async function searchMusicBrainz(artist, track, duration = null) {
   try {
-    // Clean up search terms
     const cleanArtist = artist.replace(/[^\w\s]/g, '').trim();
     const cleanTrack = track.replace(/[^\w\s]/g, '').trim();
     
@@ -18,7 +16,7 @@ async function searchMusicBrainz(artist, track, duration = null) {
         limit: 5
       },
       headers: {
-        'User-Agent': 'CollabPlaylist/1.0 (raymondc@example.com)' // Required by MusicBrainz
+        'User-Agent': 'CollabPlaylist/1.0 (raymondc@example.com)' 
       }
     });
 
@@ -31,7 +29,7 @@ async function searchMusicBrainz(artist, track, duration = null) {
     
     // If we have duration, try to find a closer match
     if (duration) {
-      const targetDuration = duration / 1000; // Convert to seconds
+      const targetDuration = duration / 1000;
       bestMatch = response.data.recordings.reduce((best, current) => {
         if (!current.length) return best;
         
@@ -52,7 +50,7 @@ async function searchMusicBrainz(artist, track, duration = null) {
 // Helper function to get features from AcousticBrainz
 async function getAcousticBrainzFeatures(mbid) {
   try {
-    // Try to get high-level features first (includes danceability)
+    // Try to get high-level features first includes danceability
     const highLevelResponse = await axios.get(
       `https://acousticbrainz.org/api/v1/${mbid}/high-level`,
       { timeout: 5000 }
@@ -100,7 +98,7 @@ export async function getAudioFeatures(trackUuids, spotifyAccessToken) {
 
   console.log('🎵 getAudioFeatures called with:', trackUuids.length, 'tracks (using MusicBrainz/AcousticBrainz)');
 
-  /* 1️⃣ read cache */
+  /* 1️ read cache */
   const { data: cached } = await supabase
     .from('audio_features')
     .select('track_id, tempo, energy, danceability')
@@ -112,7 +110,7 @@ export async function getAudioFeatures(trackUuids, spotifyAccessToken) {
 
   console.log('💾 Found', cached?.length || 0, 'cached features');
 
-  /* 2️⃣ figure out which UUIDs still need fetching */
+  /* 2️ figure out which UUIDs still need fetching */
   const missing = trackUuids.filter((id) => !featuresMap[id]);
   if (!missing.length) {
     console.log('✅ All features found in cache');
@@ -121,7 +119,7 @@ export async function getAudioFeatures(trackUuids, spotifyAccessToken) {
 
   console.log('🔍 Missing features for', missing.length, 'tracks');
 
-  /* 3️⃣ get track info from database and Spotify */
+  /* 3️ get track info from database and Spotify */
   const { data: trackRows } = await supabase
     .from('tracks')
     .select('id, spotify_track_id')
@@ -148,7 +146,7 @@ export async function getAudioFeatures(trackUuids, spotifyAccessToken) {
     return featuresMap;
   }
 
-  /* 4️⃣ search MusicBrainz and get AcousticBrainz features */
+  /* 4️ search MusicBrainz and get AcousticBrainz features */
   const toUpsert = [];
   
   for (let i = 0; i < spotifyTracks.length; i++) {
@@ -218,7 +216,7 @@ export async function getAudioFeatures(trackUuids, spotifyAccessToken) {
     }
   }
 
-  /* 5️⃣ cache the features */
+  /* 5️ cache the features */
   if (toUpsert.length) {
     console.log('💾 Caching', toUpsert.length, 'features');
     try {
@@ -230,7 +228,7 @@ export async function getAudioFeatures(trackUuids, spotifyAccessToken) {
     }
   }
 
-  /* 6️⃣ merge into map */
+  /* 6️ merge into map */
   toUpsert.forEach((r) => {
     featuresMap[r.track_id] = r;
   });

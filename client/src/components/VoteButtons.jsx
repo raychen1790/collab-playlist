@@ -1,4 +1,4 @@
-// client/src/components/VoteButtons.jsx - Enhanced with liquid animations and micro-interactions
+// client/src/components/VoteButtons.jsx 
 import { useState, useEffect, useContext } from 'react';
 import { ThumbsUp, ThumbsDown, Minus, Loader2 } from 'lucide-react';
 import { AuthContext } from '../contexts/AuthContext.jsx';
@@ -9,7 +9,6 @@ export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
   const [lastVote, setLastVote] = useState(null);
   const [animateScore, setAnimateScore] = useState(false);
   
-  // Use AuthContext for enhanced API requests
   const { apiRequest } = useContext(AuthContext);
 
   // Update local score when prop changes with animation
@@ -44,7 +43,6 @@ export default function VoteButtons({ roomId, trackId, score, onTrackUpdate }) {
         setLocalScore(json.newScore);
         setTimeout(() => setAnimateScore(false), 600);
         
-        // Also notify parent component for real-time sorting
         if (onTrackUpdate) {
           onTrackUpdate(trackId, json.newScore);
         }

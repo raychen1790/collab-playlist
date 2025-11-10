@@ -1,10 +1,9 @@
-// client/src/pages/Home.jsx - Updated to use enhanced API requests with demo features
+// client/src/pages/Home.jsx
 import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext.jsx';
 import { Music, Plus, ArrowRight, Sparkles, Loader2, User, PlayCircle } from 'lucide-react';
 
-// Get API URL from environment
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:4000';
 
 /* ----------  loading view ---------- */
@@ -348,7 +347,6 @@ function AuthedHome() {
           </form>
         </div>
 
-        {/* Debug info (remove in production) */}
         {process.env.NODE_ENV === 'development' && (
           <div className="glass-card p-4 text-xs">
             <p className="text-gray-600">Debug - API: {API_URL}</p>

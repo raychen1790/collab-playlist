@@ -1,4 +1,4 @@
-// client/src/hooks/usePreviewMusicPlayer.js - Fixed Version with Reliable Deezer Integration
+// client/src/hooks/usePreviewMusicPlayer.js 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSpotifyWebPlayback } from './useSpotifyWebPlayback.js';
 
@@ -28,15 +28,14 @@ const searchDeezerTrack = async (title, artist, apiRequest) => {
           const artistMatch = track.artist?.name.toLowerCase().includes(cleanArtist.toLowerCase()) ||
                              cleanArtist.toLowerCase().includes(track.artist?.name.toLowerCase());
           return titleMatch && artistMatch;
-        }) || data.data[0]; // Fallback to first result
-
+        }) || data.data[0]; 
         if (bestMatch && bestMatch.preview) {
           console.log(`🎯 Best match: "${bestMatch.title}" by ${bestMatch.artist?.name}`);
           return {
             previewUrl: bestMatch.preview,
             deezerTitle: bestMatch.title,
             deezerArtist: bestMatch.artist?.name,
-            duration: bestMatch.duration * 1000, // Convert to milliseconds
+            duration: bestMatch.duration * 1000, 
             albumArt: bestMatch.album?.cover_medium || bestMatch.album?.cover_small,
             deezerId: bestMatch.id
           };
@@ -167,14 +166,13 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   useEffect(() => {
     if (previewMode && !audioRef.current) {
       audioRef.current = new Audio();
-      audioRef.current.preload = 'none'; // Don't preload, load only when playing
+      audioRef.current.preload = 'none'; 
       audioRef.current.crossOrigin = 'anonymous';
       
       const audio = audioRef.current;
       
       audio.addEventListener('loadedmetadata', () => {
         console.log('Preview loaded, duration:', audio.duration);
-        // Don't override duration here - keep it as 30s for consistency
       });
       
       audio.addEventListener('timeupdate', () => {
@@ -197,12 +195,10 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
         setPreviewIsPlaying(false);
         setPreviewLoadingTrack(null);
         
-        // Mark this preview as failed
         const currentTrackData = currentTrack;
         if (currentTrackData) {
           const cacheKey = `${currentTrackData.title}-${currentTrackData.artist}`.toLowerCase();
           failedSearchesRef.current.add(cacheKey);
-          // Clear failed search after 2 minutes
           setTimeout(() => {
             failedSearchesRef.current.delete(cacheKey);
           }, 2 * 60 * 1000);
@@ -311,7 +307,6 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
   
   // Set loading state immediately
   setPreviewLoadingTrack(track.trackId);
-  // FIXED: Store the target track ID but don't set current yet
   const targetTrackId = track.trackId;
   isChangingTracks.current = true;
   
@@ -441,7 +436,6 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     console.log('⏳ Waiting for audio to load...');
     await audioLoadPromise;
     
-    // FIXED: Only set current track ID right before playing
     setPreviewCurrentTrackId(targetTrackId);
     
     console.log('▶️ Starting playback...');
@@ -475,7 +469,7 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     
     return false;
   } finally {
-    // FIXED: Clear the changing tracks flag immediately, not after timeout
+    //Clear the changing tracks flag immediately, not after timeout
     isChangingTracks.current = false;
     setPreviewLoadingTrack(null);
   }
@@ -531,17 +525,17 @@ export function usePreviewMusicPlayer(tracks, sortMode, apiRequest) {
     return await playSpotifyTrack(uri);
   }, [spotifyReady, spotifyActive, activateAudio, transferPlayback, playableTracks, playSpotifyTrack]);
 
-  /* ----------------- FIXED: unified transport controls with better state management ----------------- */
+  /* ----------------- unified transport controls with better state management ----------------- */
  const play = useCallback(async (trackIndex = null) => {
   console.log(`🎯 play() called with trackIndex: ${trackIndex}, previewMode: ${previewMode}`);
   
-  // FIXED: Don't block if we're explicitly playing a new track
+  //Don't block if we're explicitly playing a new track
   if (!playableTracks.length || (isChangingTracks.current && trackIndex === null)) {
     console.log('❌ Cannot play - no tracks or already changing');
     return false;
   }
   
-  // FIXED: Clear the changing tracks flag when starting a new track explicitly
+  // Clear the changing tracks flag when starting a new track explicitly
   if (trackIndex !== null) {
     isChangingTracks.current = false;
   }
@@ -601,7 +595,6 @@ const previous = useCallback(async () => {
   if (prevIdx >= 0) {
     console.log(`⏮️ Going to previous track: ${prevIdx}`);
     setCurrentQueueIndex(prevIdx);
-    // FIXED: Play immediately without setTimeout
     await play(playQueue[prevIdx]);
   } else {
     console.log('🔄 At beginning, going to end');
@@ -640,7 +633,7 @@ const playAll = useCallback(async () => {
     return;
   }
   
-  // FIXED: Clear any existing changing tracks flag
+  //Clear any existing changing tracks flag
   isChangingTracks.current = false;
   
   let q;
@@ -655,7 +648,7 @@ const playAll = useCallback(async () => {
   
   console.log(`🎵 Playing first track in queue: ${q[0]}`);
   
-  // FIXED: Wait a tiny bit for state to settle, then play
+  //Wait a tiny bit for state to settle, then play
   await new Promise(resolve => setTimeout(resolve, 10));
   
   const success = await play(q[0]);
@@ -747,7 +740,7 @@ const playTrackByOriginalIndex = useCallback(async (originalTrackIndex) => {
   if (qIdx >= 0) {
     setCurrentQueueIndex(qIdx);
   }
-  // FIXED: Play immediately without setTimeout
+  //Play immediately without setTimeout
   await play(idx);
 }, [getPlayableTrackIndex, play, playQueue, tracks]);
 
@@ -758,7 +751,7 @@ const playTrackByOriginalIndex = useCallback(async (originalTrackIndex) => {
     return;
   }
   setCurrentQueueIndex(queueIndex);
-  // FIXED: Wait for state update then play
+  //Wait for state update then play
   setTimeout(async () => {
     await play(playQueue[queueIndex]);
   }, 10);

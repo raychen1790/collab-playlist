@@ -1,4 +1,4 @@
-// client/src/App.jsx - Enhanced with modern design system
+// client/src/App.jsx 
 import { useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthContext, AuthProvider } from './contexts/AuthContext';

@@ -1,4 +1,4 @@
-// server/src/middleware/requireAuth.js - Enhanced with better debugging
+// server/src/middleware/requireAuth.js 
 import axios from 'axios';
 import { ensureSpotifyToken } from './ensureSpotifyToken.js';
 

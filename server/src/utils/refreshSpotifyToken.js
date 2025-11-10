@@ -1,4 +1,4 @@
-// server/src/utils/refreshSpotifyToken.js - FIXED VERSION
+// server/src/utils/refreshSpotifyToken.js 
 import axios from 'axios';
 
 export async function refreshSpotifyToken(refreshToken) {
@@ -31,14 +31,14 @@ export async function refreshSpotifyToken(refreshToken) {
             `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
           ).toString('base64'),
         },
-        timeout: 10000, // 10 second timeout
+        timeout: 10000, 
       }
     );
 
     console.log('✅ Token refresh successful');
     console.log('📊 New token expires in:', response.data.expires_in, 'seconds');
 
-    // FIXED: Handle case where Spotify doesn't return a new refresh token
+    //case where Spotify doesn't return a new refresh token
     const result = {
       access_token: response.data.access_token,
       token_type: response.data.token_type || 'Bearer',
@@ -46,13 +46,13 @@ export async function refreshSpotifyToken(refreshToken) {
       scope: response.data.scope
     };
 
-    // Only include refresh_token if Spotify provided a new one
+    //include refresh_token if Spotify provided a new one
     if (response.data.refresh_token) {
       result.refresh_token = response.data.refresh_token;
       console.log('🔄 Received new refresh token');
     } else {
       console.log('♻️ Reusing existing refresh token');
-      result.refresh_token = refreshToken; // Keep the original refresh token
+      result.refresh_token = refreshToken; 
     }
 
     return result;
@@ -61,7 +61,6 @@ export async function refreshSpotifyToken(refreshToken) {
     console.error('❌ Token refresh failed:');
     
     if (error.response) {
-      // Spotify API error
       console.error('   Status:', error.response.status);
       console.error('   Data:', error.response.data);
       

@@ -1,4 +1,4 @@
-// client/src/components/MusicPlayer.jsx - ENHANCED VERSION with Preview Mode Support
+// client/src/components/MusicPlayer.jsx 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Play, 

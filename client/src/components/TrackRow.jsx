@@ -1,10 +1,7 @@
-// client/src/components/TrackRow.jsx - FIXED: Enhanced with proper Preview Mode support
+// client/src/components/TrackRow.jsx 
 import VoteButtons from './VoteButtons.jsx';
 import { Play, Pause, Music, Zap, Activity, Volume2, Loader } from 'lucide-react';
 
-/**
- * Ultra-enhanced TrackRow with liquid animations, 3D effects, and FIXED preview mode support
- */
 export default function TrackRow({
   roomId,
   track,
@@ -14,18 +11,17 @@ export default function TrackRow({
   position,
   isPlaying,
   isCurrentTrack,
-  isLoading = false, // NEW: loading state for preview searches
+  isLoading = false,
   onPlay,
   onPause,
   trackIndex,
   spotifyReady = false,
   spotifyActive = false,
-  previewMode = false, // NEW: preview mode flag
+  previewMode = false, 
 }) {
   const { trackId, title, artist, albumArt, score, spotifyId, previewUrl,
           tempo, energy, danceability } = track;
 
-  /* value to show beside the row, depending on sort */
   let extraMetric = null;
   if (sortMode === 'tempo'  && tempo != null)        extraMetric = `${Math.round(tempo)} BPM`;
   if (sortMode === 'energy' && energy != null)       extraMetric = energy.toFixed(2);
@@ -41,18 +37,16 @@ export default function TrackRow({
     }
   };
 
-  // FIXED: Updated playability logic for both modes
   const isPlayable = previewMode 
     ? !!(title && artist) // In preview mode, any track with title/artist is potentially playable
     : !!spotifyId; // In Spotify mode, need Spotify ID
 
-  // FIXED: Updated canPlay logic to account for loading states
   const canPlay = previewMode 
     ? isPlayable && !isLoading // In preview mode, playable if has title/artist and not currently loading
-    : (isPlayable && spotifyReady && spotifyActive); // Spotify mode unchanged
+    : (isPlayable && spotifyReady && spotifyActive); 
 
   const getPlayButtonIcon = () => {
-    if (isLoading) return <Loader size={16} className="animate-spin" />; // NEW: Show loading spinner
+    if (isLoading) return <Loader size={16} className="animate-spin" />; 
     if (!isPlayable) return <Music size={16} />;
     if (isCurrentTrack && isPlaying) return <Pause size={16} />;
     return <Play size={16} />;
@@ -87,7 +81,7 @@ export default function TrackRow({
         animationDelay: `${position * 50}ms`
       }}
     >
-      {/* Holographic glow for current track */}
+
       {isCurrentTrack && (
         <>
           <div className="absolute inset-0 bg-gradient-to-r from-blue-400/10 via-purple-400/10 to-pink-400/10 rounded-lg animate-pulse"></div>
@@ -95,22 +89,20 @@ export default function TrackRow({
         </>
       )}
 
-      {/* Enhanced position indicator with rank styling */}
       <div className="relative">
         <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-fun font-bold shadow-lg transition-all duration-300 ${getPositionStyle()}`}>
           {position}
         </div>
         
-        {/* Rank indicators for top positions */}
         {position <= 3 && (
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-yellow-300 to-yellow-500 rounded-full border border-white/50 animate-pulse"></div>
         )}
       </div>
 
-      {/* FIXED: Enhanced play/pause button with loading state and better preview indicator */}
+
       <button
         onClick={handlePlayPauseClick}
-        disabled={!canPlay && !isLoading} // Allow clicking while loading in case user wants to cancel/retry
+        disabled={!canPlay && !isLoading}
         className={`play-btn btn-liquid relative ${
           canPlay || isLoading
             ? `${isCurrentTrack && isPlaying ? 'playing' : ''} ${isLoading ? 'loading' : ''}` 
@@ -120,7 +112,7 @@ export default function TrackRow({
       >
         {getPlayButtonIcon()}
         
-        {/* Preview mode indicator - UPDATED to show for all playable tracks in preview mode */}
+        {/* Preview mode indicator show for all playable tracks in preview mode */}
         {previewMode && isPlayable && !isLoading && (
           <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-blue-300 to-purple-300 rounded-full border border-white/50">
             <Volume2 size={8} className="text-white p-0.5" />

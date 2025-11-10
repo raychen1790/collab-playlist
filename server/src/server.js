@@ -1,4 +1,4 @@
-// server/src/server.js - Updated with Deezer proxy routes
+// server/src/server.js 
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -9,7 +9,7 @@ import cookieParser from 'cookie-parser';
 import authRoutes from './routes/auth.js';
 import roomsRoutes from './routes/rooms.js';
 import votesRoutes from './routes/votes.js';
-import deezerRoutes from './routes/deezer.js'; // NEW: Add Deezer routes
+import deezerRoutes from './routes/deezer.js'; 
 
 const isProd = process.env.NODE_ENV === 'production';
 const FRONTEND = process.env.FRONTEND_URI;
@@ -17,17 +17,15 @@ const FRONTEND = process.env.FRONTEND_URI;
 const app = express();
 app.set('trust proxy', 1);
 
-// Allow local dev + your deployed frontend
 const allowed = new Set([
   'http://127.0.0.1:5173',
   'http://localhost:5173',
   FRONTEND,
-  'https://collab-playlist.vercel.app', // Add your actual Vercel URL
+  'https://collab-playlist.vercel.app', 
 ].filter(Boolean));
 
 const corsOptions = {
   origin(origin, cb) {
-    // allow non-browser tools (curl/postman) with no origin
     if (!origin) return cb(null, true);
     console.log('🔍 CORS check for origin:', origin);
     const allowed_result = allowed.has(origin);
@@ -45,7 +43,7 @@ app.use(cookieParser(process.env.SESSION_SECRET));
 app.use('/auth', authRoutes);
 app.use('/api/rooms', roomsRoutes);
 app.use('/api/rooms', votesRoutes);
-app.use('/api/deezer', deezerRoutes); // NEW: Add Deezer proxy routes
+app.use('/api/deezer', deezerRoutes); 
 
 app.get('/health', (_req, res) => res.send('Backend API is healthy'));
 
@@ -74,8 +72,8 @@ app.use((req, res) => {
       'POST /auth/*',
       'GET /api/rooms/*',
       'POST /api/rooms/*',
-      'GET /api/deezer/search', // NEW
-      'GET /api/deezer/track/:id' // NEW
+      'GET /api/deezer/search', 
+      'GET /api/deezer/track/:id' 
     ]
   });
 });

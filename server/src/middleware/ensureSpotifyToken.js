@@ -1,4 +1,4 @@
-// server/src/middleware/ensureSpotifyToken.js - STREAMLINED VERSION
+// server/src/middleware/ensureSpotifyToken.js 
 import { refreshSpotifyToken } from '../utils/refreshSpotifyToken.js';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -70,9 +70,6 @@ async function verifySpotifyToken(token, retries = 1) {
   return { valid: false, error: 'max_retries_exceeded' };
 }
 
-/**
- * STREAMLINED: Middleware focused on core functionality
- */
 export async function ensureSpotifyToken(req, res, next) {
   const endpoint = `${req.method} ${req.path}`;
   console.log(`🔍 ensureSpotifyToken for ${endpoint}`);

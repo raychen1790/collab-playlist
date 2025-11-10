@@ -1,4 +1,4 @@
-// server/src/routes/deezer.js - Deezer API proxy routes
+// server/src/routes/deezer.js 
 import express from 'express';
 
 const router = express.Router();
@@ -84,7 +84,6 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// Optional: Get specific track details
 router.get('/track/:id', async (req, res) => {
   try {
     const { id } = req.params;

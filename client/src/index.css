@@ -987,7 +987,7 @@ body:has(.glass-card:hover) .bg-gradient-animated {
   position: absolute; inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  box-shadow: 0 22px 52px rgba(31,38,135,.28); /* the "hover" shadow look */
+  box-shadow: 0 22px 52px rgba(31,38,135,.28); 
   opacity: 0;
   transition: opacity 200ms ease;
 }

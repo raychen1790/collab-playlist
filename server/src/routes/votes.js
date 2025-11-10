@@ -17,7 +17,7 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
 
   const user = req.user;
 
-  /* 1️⃣ get (or create) internal user id */
+  /* 1 get (or create) internal user id */
   const { data: rows, error: uErr } = await supabase
     .from('users')
     .upsert(
@@ -28,7 +28,7 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
   if (uErr) return res.status(500).json({ error: uErr.message });
   const userId = rows[0].id;
 
-  /* 2️⃣ handle the vote */
+  /* 2️ handle the vote */
   if (vote === 0) {
     // Remove the user's vote (neutral)
     const { error: deleteErr } = await supabase
@@ -48,7 +48,7 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
     if (vErr) return res.status(500).json({ error: vErr.message });
   }
 
-  /* 3️⃣ get all tracks for this room */
+  /* 3️ get all tracks for this room */
   const { data: tracks, error: tErr } = await supabase
     .from('tracks')
     .select('id, spotify_track_id, added_at')
@@ -56,7 +56,7 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
 
   if (tErr) return res.status(500).json({ error: tErr.message });
 
-  /* 4️⃣ get all votes for these tracks */
+  /* 4️ get all votes for these tracks */
   const trackIds = tracks.map(t => t.id);
   const { data: votes, error: votesFetchErr } = await supabase
     .from('votes')
@@ -65,7 +65,7 @@ router.post('/:roomId/tracks/:trackId/vote', async (req, res) => {
 
   if (votesFetchErr) return res.status(500).json({ error: votesFetchErr.message });
 
-  /* 5️⃣ calculate scores and format response */
+  /* 5️ calculate scores and format response */
   const result = tracks.map(track => {
     const trackVotes = votes?.filter(v => v.track_id === track.id) || [];
     const score = trackVotes.reduce((sum, v) => sum + v.vote, 0);

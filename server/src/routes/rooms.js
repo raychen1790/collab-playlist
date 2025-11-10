@@ -1,4 +1,4 @@
-// server/routes/rooms.js - FIXED VERSION with comprehensive error handling
+// server/routes/rooms.js 
 import { requireAuth }        from '../middleware/requireAuth.js';
 import { ensureSpotifyToken } from '../middleware/ensureSpotifyToken.js';
 import express from 'express';
@@ -112,7 +112,7 @@ async function makeSpotifyRequest(url, token, retries = 3, delay = 1000) {
         if (attempt < retries) {
           console.log(`⏳ Retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 2; // Exponential backoff
+          delay *= 2; 
           continue;
         }
         
@@ -231,7 +231,7 @@ router.post('/', async (req, res) => {
       .insert({
         name,
         host_user_id: userId,
-        spotify_playlist: cleanPlaylistId, // Use clean ID
+        spotify_playlist: cleanPlaylistId, 
       })
       .select()
       .single();
@@ -352,7 +352,7 @@ router.get('/:roomId', async (req, res) => {
       item.track.id && 
       item.track.name &&
       item.track.artists &&
-      !item.track.is_local // Exclude local files
+      !item.track.is_local 
     );
     
     console.log(`✅ ${validItems.length} valid tracks after filtering`);
@@ -457,7 +457,7 @@ router.get('/:roomId', async (req, res) => {
         isLocal: item.track.is_local || false,
         isPlayable: item.track.is_playable !== false,
       };
-    }).filter(track => track.trackId); // Only include tracks that exist in DB
+    }).filter(track => track.trackId); 
 
     // 8) Handle sorting
     if (['tempo','energy','dance'].includes(sortMode)) {
